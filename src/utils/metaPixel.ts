@@ -42,21 +42,25 @@ export const trackMetaViewContent = (product: {
 };
 
 /** Track AddToCart when customer adds an item to their cart */
-export const trackMetaAddToCart = (item: {
-  id: string;
-  name: string;
-  price: number;
+export const trackMetaAddToCart = (item?: {
+  id?: string;
+  name?: string;
+  price?: number;
   quantity?: number;
   currency?: string;
 }): void => {
   if (isMetaPixelReady()) {
-    window.fbq!("track", "AddToCart", {
-      content_name: item.name,
-      content_ids: [item.id],
-      content_type: "product",
-      value: item.price * (item.quantity || 1),
-      currency: item.currency || "INR",
-    });
+    if (item && item.name) {
+      window.fbq!("track", "AddToCart", {
+        content_name: item.name,
+        content_ids: item.id ? [item.id] : undefined,
+        content_type: "product",
+        value: (item.price || 0) * (item.quantity || 1),
+        currency: item.currency || "INR",
+      });
+    } else {
+      window.fbq!("track", "AddToCart");
+    }
   }
 };
 
@@ -76,19 +80,25 @@ export const trackMetaInitiateCheckout = (data: {
 };
 
 /** Track Purchase when an order is successfully completed */
-export const trackMetaPurchase = (order: {
-  orderId: string;
-  amount: number;
+export const trackMetaPurchase = (order?: {
+  orderId?: string;
+  amount?: number;
+  value?: number;
   currency?: string;
   numItems?: number;
+  num_items?: number;
+  content_ids?: string[];
 }): void => {
   if (isMetaPixelReady()) {
+    const val = typeof order?.value === "number" ? order.value : (typeof order?.amount === "number" ? order.amount : 0);
+    const curr = order?.currency || "INR";
     window.fbq!("track", "Purchase", {
+      value: val,
+      currency: curr,
+      ...(order?.content_ids ? { content_ids: order.content_ids } : {}),
+      ...(order?.numItems || order?.num_items ? { num_items: order?.numItems || order?.num_items } : {}),
+      ...(order?.orderId ? { order_id: order.orderId } : {}),
       content_type: "product",
-      value: order.amount,
-      currency: order.currency || "INR",
-      order_id: order.orderId,
-      num_items: order.numItems || 1,
     });
   }
 };

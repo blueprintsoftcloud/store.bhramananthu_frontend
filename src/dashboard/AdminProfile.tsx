@@ -3,7 +3,6 @@ import { domainUrl } from "../utils/constant";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import Loader from "../components/Loader";
-import { PulseLoader } from "react-spinners";
 import { useAuth } from "../context/AuthContext";
 import { useBranding } from "../context/BrandingContext";
 import { useSeoSettings } from "../context/SeoContext";
@@ -26,6 +25,9 @@ import {
   Search,
   ChevronDown,
   QrCode,
+  Info,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
 import api from "../utils/api";
 
@@ -116,7 +118,7 @@ const AdminProfile = () => {
     COMPANY_FAVICON: "",
     SHOW_COMPANY_NAME: true,
     SHOW_COMPANY_TAGLINE: true,
-    INVOICE_FORMAT: "A4",
+    INVOICE_FORMAT: "THERMAL",
     MSG91_EMAIL_FROM_NAME: "",
   });
   const [companyLoading, setCompanyLoading] = useState(true);
@@ -159,11 +161,10 @@ const AdminProfile = () => {
       } catch (err) {
         const _e = err as any;
         console.error("Admin profile error:", err);
-        if (_e.response?.status === 404) {
+        if (_e.response?.status === 404 || _e.response?.status === 401 || _e.response?.status === 403) {
           logout();
         } else {
           toast.error("Failed to load admin profile.");
-          if (_e.response?.status === 401) navigate("/login");
         }
       } finally {
         setLoadingProfile(false);
@@ -192,7 +193,7 @@ const AdminProfile = () => {
             s.SHOW_COMPANY_TAGLINE === "1" ||
             s.SHOW_COMPANY_TAGLINE === undefined ||
             s.SHOW_COMPANY_TAGLINE === null,
-          INVOICE_FORMAT: s.INVOICE_FORMAT === "THERMAL" ? "THERMAL" : "A4",
+          INVOICE_FORMAT: "THERMAL",
           MSG91_EMAIL_FROM_NAME: s.MSG91_EMAIL_FROM_NAME ?? "",
         });
         if (s.COMPANY_LOGO) setLogoPreview(s.COMPANY_LOGO);
@@ -270,7 +271,7 @@ const AdminProfile = () => {
       fd.append("companyTagline", company.COMPANY_TAGLINE.trim());
       fd.append("showCompanyName", String(company.SHOW_COMPANY_NAME));
       fd.append("showCompanyTagline", String(company.SHOW_COMPANY_TAGLINE));
-      fd.append("invoiceFormat", company.INVOICE_FORMAT);
+      fd.append("invoiceFormat", "THERMAL");
       fd.append("emailSenderName", company.MSG91_EMAIL_FROM_NAME.trim());
       if (logoFile) { fd.append("logo", logoFile); }
       else if (company.COMPANY_LOGO) { fd.append("logoUrl", company.COMPANY_LOGO); }
@@ -293,7 +294,7 @@ const AdminProfile = () => {
           s.SHOW_COMPANY_TAGLINE === "1" ||
           s.SHOW_COMPANY_TAGLINE === undefined ||
           s.SHOW_COMPANY_TAGLINE === null,
-        INVOICE_FORMAT: s.INVOICE_FORMAT === "THERMAL" ? "THERMAL" : "A4",
+        INVOICE_FORMAT: "THERMAL",
         MSG91_EMAIL_FROM_NAME: s.MSG91_EMAIL_FROM_NAME ?? "",
       });
       if (s.COMPANY_LOGO) setLogoPreview(s.COMPANY_LOGO);
@@ -738,11 +739,9 @@ const AdminProfile = () => {
 
               <div className="p-6">
                 {companyLoading ? (
-                  <div className="flex flex-col items-center justify-center py-16 gap-4">
-                    <div className="relative flex items-center justify-center w-0 h-0 pl-1.5">
-                      <PulseLoader color="#000000" />
-                    </div>
-                    <p className="text-xs uppercase font-bold tracking-widest text-slate-400 font-mono mt-12 select-none">
+                  <div className="flex flex-col items-center justify-center py-16 gap-3">
+                    <Loader2 className="w-8 h-8 text-[#0B6B6B] animate-spin" />
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                       Loading company settings...
                     </p>
                   </div>
@@ -885,44 +884,25 @@ const AdminProfile = () => {
                         />
                       </div>
 
-                      <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-3">
+                      <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-2">
                         <div className="space-y-0.5">
-                          <p className="text-xs font-bold text-slate-900">Invoice Format</p>
+                          <p className="text-xs font-bold text-slate-900">Order Confirmation Slip Format</p>
                           <p className="text-[11px] text-slate-500 font-medium">
-                            Default layout for new invoices — each invoice page also has its own toggle to switch formats for that download only.
+                            Standard format for all order confirmation slips and printouts.
                           </p>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {(["A4", "THERMAL"] as const).map((opt) => (
-                            <label
-                              key={opt}
-                              htmlFor={`invoiceFormat-${opt}`}
-                              className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border cursor-pointer transition ${
-                                company.INVOICE_FORMAT === opt
-                                  ? "border-slate-900 bg-white shadow-sm"
-                                  : "border-slate-200 bg-white/60 hover:bg-white"
-                              }`}
-                            >
-                              <input
-                                type="radio"
-                                id={`invoiceFormat-${opt}`}
-                                name="invoiceFormat"
-                                checked={company.INVOICE_FORMAT === opt}
-                                onChange={() => setCompany((p) => ({ ...p, INVOICE_FORMAT: opt }))}
-                                className="w-4 h-4 text-slate-900 border-slate-300 focus:ring-slate-900 cursor-pointer shrink-0"
-                              />
-                              <span className="text-xs font-semibold text-slate-800">
-                                {opt === "A4" ? "A4 (Full Page)" : "Thermal Receipt (80mm)"}
-                              </span>
-                            </label>
-                          ))}
+                        <div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-300 shadow-xs">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                          <span className="text-xs font-bold text-slate-900">
+                            Thermal Label (4″ × 6″)
+                          </span>
                         </div>
                       </div>
                     </div>
 
                     {/* Live invoice preview */}
                     <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Invoice Header Preview</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Order Confirmation Slip Header Preview</p>
                       <div className="bg-slate-900 text-white rounded-2xl px-6 py-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                         <div className="flex items-center gap-4">
                           {logoPreview && (
@@ -934,7 +914,7 @@ const AdminProfile = () => {
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Invoice</p>
+                          <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Order Confirmation Slip</p>
                           <p className="text-base font-bold text-white mt-0.5">INV-XXXXXXXXXX</p>
                         </div>
                       </div>
@@ -970,9 +950,9 @@ const AdminProfile = () => {
 
               <div className="p-6">
                 {companyLoading ? (
-                  <div className="flex flex-col items-center justify-center py-16 gap-4">
-                    <PulseLoader color="#000000" />
-                    <p className="text-xs uppercase font-bold tracking-widest text-slate-400 font-mono mt-4">
+                  <div className="flex flex-col items-center justify-center py-16 gap-3">
+                    <Loader2 className="w-8 h-8 text-purple-600 animate-spin" />
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                       Loading QR settings...
                     </p>
                   </div>
@@ -1006,6 +986,43 @@ const AdminProfile = () => {
                             paymentQr.PAYMENT_QR_ENABLED ? "translate-x-5" : "translate-x-0"
                           }`}
                         />
+                      </div>
+                    </div>
+
+                    {/* How Pay with QR Works Info Box */}
+                    <div className="p-4 rounded-2xl bg-purple-50/70 border border-purple-200/80 space-y-3">
+                      <div className="flex items-center gap-2 text-purple-900 font-bold text-xs">
+                        <Info className="w-4 h-4 text-purple-600 shrink-0" />
+                        <span>How Payment QR Works & How Amount is Charged</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
+                        <div className="p-3 rounded-xl bg-white border border-purple-100/90 shadow-2xs space-y-1">
+                          <p className="font-bold text-slate-800 flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-slate-400 shrink-0" />
+                            If Custom QR Image is uploaded:
+                          </p>
+                          <p className="text-slate-500 leading-relaxed">
+                            Shows only your static QR image at checkout. The customer scans it and must manually enter the order amount in their UPI app.
+                          </p>
+                        </div>
+                        <div className="p-3 rounded-xl bg-white border border-purple-100/90 shadow-2xs space-y-1">
+                          <p className="font-bold text-slate-800 flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-purple-600 shrink-0" />
+                            If UPI ID is provided (Recommended):
+                          </p>
+                          <p className="text-slate-500 leading-relaxed">
+                            The system automatically generates a dynamic QR code pre-filled with the customer's exact payable amount. The customer scans and pays the exact order amount without typing it.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-200/70 p-3 rounded-xl">
+                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold block">Testing Recommendation:</span>
+                          <span className="text-amber-700 leading-relaxed">
+                            Always place a test order with a small amount on checkout (e.g. ₹1) and scan the QR with your UPI app to verify that payments successfully credit your bank account with the correct amount.
+                          </span>
+                        </div>
                       </div>
                     </div>
 
@@ -1142,11 +1159,9 @@ const AdminProfile = () => {
 
               <div className="p-6">
                 {companyLoading ? (
-                  <div className="flex flex-col items-center justify-center py-16 gap-4">
-                    <div className="relative flex items-center justify-center w-0 h-0 pl-1.5">
-                      <PulseLoader color="#000000" />
-                    </div>
-                    <p className="text-xs uppercase font-bold tracking-widest text-slate-400 font-mono mt-12 select-none">
+                  <div className="flex flex-col items-center justify-center py-16 gap-3">
+                    <Loader2 className="w-8 h-8 text-[#0B6B6B] animate-spin" />
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                       Loading SEO settings...
                     </p>
                   </div>

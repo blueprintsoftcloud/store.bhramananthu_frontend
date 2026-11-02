@@ -20,6 +20,7 @@ import {
 import { ClipLoader } from "react-spinners";
 import toast from "react-hot-toast";
 import api from "../utils/api";
+import { getItemOriginalPrice } from "../pages/InvoicePage";
 
 interface BulkInvoiceOrder {
   id: string;
@@ -34,10 +35,16 @@ interface BulkInvoiceOrder {
   orderStatus: string;
   shippingAddress?: {
     fullAddress?: string;
+    locality?: string;
     city?: string;
     state?: string;
     zipCode?: string;
     country?: string;
+    secondaryPhone?: string;
+    alternatePhone?: string;
+    phone?: string;
+    fullName?: string;
+    name?: string;
   };
   user?: {
     username?: string;
@@ -77,6 +84,7 @@ interface BulkInvoiceModalProps {
   onSuccess: () => void;
 }
 
+
 export default function BulkInvoiceModal({
   orderIds,
   unprintedOnly,
@@ -86,8 +94,7 @@ export default function BulkInvoiceModal({
   const [orders, setOrders] = useState<BulkInvoiceOrder[]>([]);
   const [company, setCompany] = useState<CompanySettings>({});
   const [loading, setLoading] = useState(true);
-  const [format, setFormat] = useState<"A4" | "THERMAL">("A4");
-  const [showConfirm, setShowConfirm] = useState(false);
+  const format = "THERMAL";
   const [marking, setMarking] = useState(false);
 
   useEffect(() => {
@@ -112,9 +119,6 @@ export default function BulkInvoiceModal({
           setOrders(loadedOrders);
           const s = settingsRes.data?.settings ?? {};
           setCompany(s);
-          if (s.INVOICE_FORMAT === "THERMAL") {
-            setFormat("THERMAL");
-          }
         }
       } catch (err: any) {
         toast.error(err?.response?.data?.message ?? "Failed to load orders for invoice printing");
@@ -142,187 +146,286 @@ export default function BulkInvoiceModal({
       .join(" · ");
   };
 
-  // ── A4 Print Handler ────────────────────────────────────────────────────────
-  const handleA4Print = () => {
+  // ── Thermal (4″ × 6″) Print Handler ──────────────────────────────────────────
+  const handlePrint = () => {
     window.print();
-    setShowConfirm(true);
+    handleAutoMarkPrinted(true);
   };
 
-  // ── Thermal (80mm) PDF Download Handler ──────────────────────────────────────
+  const formatThermalDate = (dateStr?: string | Date) => {
+    if (!dateStr) return "";
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return "";
+    const day = String(d.getDate()).padStart(2, "0");
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const month = months[d.getMonth()] || "Oct";
+    const year = String(d.getFullYear()).slice(-2);
+    return `${day}-${month}-${year}`;
+  };
+
+  const getThermalPaymentMethod = (method?: string) => {
+    const m = (method || "").toUpperCase().trim();
+    if (m === "POD" || m === "COD" || m.includes("DELIVERY")) {
+      return "CASH ON DELIVERY";
+    }
+    if (m === "ONLINE" || m === "RAZORPAY") {
+      return "ONLINE PAYMENT";
+    }
+    if (m === "QR" || m === "UPI") {
+      return "UPI / QR PAYMENT";
+    }
+    if (m === "CASH" || m === "CASH COLLECTED" || m === "CASH_COLLECTED" || m === "PREPAID") {
+      return "PREPAID";
+    }
+    return m || "PREPAID";
+  };
+
+  // ── Thermal (4″ × 6″) PDF Download Handler ──────────────────────────────────────
   const handleDownloadThermalPdf = () => {
     if (orders.length === 0) return;
 
-    const PAGE_WIDTH = 80;
-    const MARGIN = 4;
-    const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
-    const MM_PER_PT = 25.4 / 72;
-    const COURIER_CHAR_WIDTH_EM = 0.6;
-    const fmtPdf = (n: number) => `Rs.${n.toFixed(2)}`;
+    const PAGE_W = 101.6;
+    const PAGE_H = 152.4;
+    const M = 4;
+    const BOX_X = M;
+    const BOX_Y = M;
+    const BOX_W = PAGE_W - M * 2;
+    const BOX_H = PAGE_H - M * 2;
 
-    const wrapText = (text: string, maxWidthMm: number, sizePt: number): string[] => {
-      const charWidthMm = sizePt * COURIER_CHAR_WIDTH_EM * MM_PER_PT;
-      const maxChars = Math.max(1, Math.floor(maxWidthMm / charWidthMm));
-      if (text.length <= maxChars) return [text];
-      const words = text.split(" ");
-      const lines: string[] = [];
-      let current = "";
-      for (const word of words) {
-        const candidate = current ? `${current} ${word}` : word;
-        if (candidate.length > maxChars && current) {
-          lines.push(current);
-          current = word;
-        } else {
-          current = candidate;
-        }
+    const doc = new jsPDF({
+      unit: "mm",
+      format: [PAGE_W, PAGE_H],
+      orientation: "portrait",
+    });
+
+    orders.forEach((order, orderIdx) => {
+      if (orderIdx > 0) {
+        doc.addPage([PAGE_W, PAGE_H], "portrait");
       }
-      if (current) lines.push(current);
-      return lines.length ? lines : [""];
-    };
 
-    type DrawCmd =
-      | { kind: "text"; text: string; x: number; y: number; align: "left" | "center" | "right"; size: number; bold: boolean }
-      | { kind: "line"; y: number };
-
-    // We calculate heights for each receipt
-    const compiledOrders = orders.map((order) => {
-      const commands: DrawCmd[] = [];
-      let y = MARGIN;
-
-      const addLine = (text: string, opts: { align?: "left" | "center" | "right"; size?: number; bold?: boolean } = {}) => {
-        const { align = "left", size = 9, bold = false } = opts;
-        const maxWidth = align === "center" ? PAGE_WIDTH - MARGIN * 2 : CONTENT_WIDTH;
-        const wrapped = wrapText(text, maxWidth, size);
-        const lineHeight = size * 0.65;
-        wrapped.forEach((line) => {
-          const x = align === "center" ? PAGE_WIDTH / 2 : align === "right" ? PAGE_WIDTH - MARGIN : MARGIN;
-          commands.push({ kind: "text", text: line, x, y, align, size, bold });
-          y += lineHeight;
-        });
-      };
-
-      const addRow = (left: string, right: string, opts: { size?: number; bold?: boolean } = {}) => {
-        const { size = 9, bold = false } = opts;
-        commands.push({ kind: "text", text: left, x: MARGIN, y, align: "left", size, bold });
-        commands.push({ kind: "text", text: right, x: PAGE_WIDTH - MARGIN, y, align: "right", size, bold });
-        y += size * 0.65;
-      };
-
-      const addDivider = () => {
-        y += 2;
-        commands.push({ kind: "line", y });
-        y += 4;
-      };
-
-      const addGap = () => {
-        y += 3;
-      };
-
-      const invoiceNumber = `INV-${order.id.slice(-10).toUpperCase()}`;
-      const invoiceDate = new Date(order.createdAt).toLocaleDateString("en-IN", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
       const addr = order.shippingAddress ?? {};
+      const customerName = (addr as any)?.fullName || (addr as any)?.name || order.user?.username || "Customer";
+      const customerPhone = (addr as any)?.phone || order.user?.phone || "";
+      const secondaryPhone = addr?.secondaryPhone || (addr as any)?.alternatePhone || "";
+      const phoneNumbers = Array.from(new Set([customerPhone, secondaryPhone].filter(Boolean))).join(", ");
+      const fullAddress = addr.fullAddress || (addr as any)?.address || "";
 
-      addLine(companyName, { align: "center", size: 13, bold: true });
-      if (companyTagline) addLine(companyTagline, { align: "center", size: 8 });
-      addDivider();
-
-      addLine(`Invoice: ${invoiceNumber}`, { size: 9, bold: true });
-      addLine(`Date: ${invoiceDate}`);
-      addLine(`Order: #${order.id.slice(-8).toUpperCase()}`);
-      addLine(`Status: ${order.orderStatus}`);
-      const methodLabel = order.paymentMethod === "ONLINE" ? "Online" : order.paymentMethod === "QR" ? "QR" : "POD";
-      addLine(`Payment: ${order.paymentStatus ?? "Pending"} (${methodLabel})`);
-      addDivider();
-
-      addLine("BILL TO", { size: 7, bold: true });
-      if (order.user) {
-        addLine(order.user.username ?? "Customer", { bold: true });
-        if (order.user.email) addLine(order.user.email);
-        if (order.user.phone) addLine(order.user.phone);
-      } else {
-        addLine("Customer info unavailable");
+      const addressLines: string[] = [];
+      if (fullAddress) {
+        fullAddress
+          .split(/\n+/)
+          .flatMap((part) => part.split(","))
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .forEach((item) => {
+            addressLines.push(item.toUpperCase());
+          });
       }
-      addGap();
-
-      addLine("SHIP TO", { size: 7, bold: true });
-      if (addr.fullAddress) addLine(addr.fullAddress);
-      const cityLine = [addr.city, addr.state].filter(Boolean).join(", ") + (addr.zipCode ? ` - ${addr.zipCode}` : "");
-      if (cityLine.trim()) addLine(cityLine);
-      if (addr.country) addLine(addr.country);
-      addDivider();
-
-      order.items.forEach((item) => {
-        addLine(item.product?.name ?? "Product", { bold: true });
-        const variantLabel = formatVariant(item.variant);
-        if (variantLabel) addLine(variantLabel, { size: 7 });
-        addRow(`${item.quantity} x ${fmtPdf(item.price)}`, fmtPdf(item.price * item.quantity));
-        addGap();
-      });
-      addDivider();
-
-      addRow("Subtotal", fmtPdf(order.totalAmount));
-      addRow("Shipping", order.shippingCharge > 0 ? fmtPdf(order.shippingCharge) : "Free");
-      if (order.discountAmount > 0) {
-        addRow(`Discount${order.coupon ? ` (${order.coupon.code})` : ""}`, `-${fmtPdf(order.discountAmount)}`);
-      }
-      if (order.taxAmount > 0) {
-        addRow("Tax", fmtPdf(order.taxAmount));
-      }
-      addGap();
-      addRow("TOTAL", fmtPdf(order.finalAmount), { size: 11, bold: true });
-      addDivider();
-
-      addLine(`Thank you for shopping with ${companyName}.`, { align: "center", size: 8 });
-      addLine("Computer-generated receipt.", { align: "center", size: 8 });
-
-      const finalHeight = Math.max(y + MARGIN, 90);
-      return { commands, height: finalHeight };
-    });
-
-    const first = compiledOrders[0];
-    const doc = new jsPDF({ unit: "mm", format: [PAGE_WIDTH, first.height] });
-    doc.setFont("courier");
-
-    compiledOrders.forEach((item, index) => {
-      if (index > 0) {
-        doc.addPage([PAGE_WIDTH, item.height]);
-        doc.setFont("courier");
-      }
-      item.commands.forEach((cmd) => {
-        if (cmd.kind === "line") {
-          doc.setLineDashPattern([0.6, 0.6], 0);
-          doc.line(MARGIN, cmd.y, PAGE_WIDTH - MARGIN, cmd.y);
-          doc.setLineDashPattern([], 0);
-        } else {
-          doc.setFontSize(cmd.size);
-          doc.setFont("courier", cmd.bold ? "bold" : "normal");
-          doc.text(cmd.text, cmd.x, cmd.y, { align: cmd.align });
+      if (addr.locality && addr.locality.trim()) {
+        const rawLoc = addr.locality.trim();
+        const isAlreadyPresent = addressLines.some((l) =>
+          l.toLowerCase().includes(rawLoc.toLowerCase())
+        );
+        if (!isAlreadyPresent) {
+          const hasPoSuffix = /(?:\b(?:p\.?o\.?|s\.?o\.?|b\.?o\.?|h\.?o\.?|post\s*office)|\(p\.?o\.?\))$/i.test(rawLoc);
+          const formattedLoc = hasPoSuffix ? rawLoc : `${rawLoc} P.O.`;
+          addressLines.push(formattedLoc.toUpperCase());
         }
+      }
+      const cityStateZip = [addr.city, addr.state].filter(Boolean).join(", ") + (addr.zipCode ? ` - ${addr.zipCode}` : "");
+      if (cityStateZip && !addressLines.some((l) => l.includes(addr.zipCode || "____"))) {
+        addressLines.push(cityStateZip.toUpperCase());
+      }
+
+      const thermalDate = formatThermalDate(order.createdAt);
+      const thermalPaymentMethod = getThermalPaymentMethod(order.paymentMethod);
+
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.35);
+
+      // Outer Border
+      doc.rect(BOX_X, BOX_Y, BOX_W, BOX_H);
+
+      // 1. TO: (Bold Address Section at Top)
+      let curY = BOX_Y + 5.5;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(0, 0, 0);
+      doc.text("TO:", BOX_X + 4, curY);
+
+      curY += 4.5;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text(customerName.toUpperCase(), BOX_X + 4, curY);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      addressLines.forEach((line) => {
+        curY += 4.5;
+        doc.text(line, BOX_X + 4, curY);
       });
+
+      if (phoneNumbers) {
+        curY += 5;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.text(`MOB: ${phoneNumbers}`, BOX_X + 4, curY);
+      }
+
+      // 2. BOTTOM SECTION (Meta Strip + Table + Charges + Footer Banner anchored to bottom)
+      const footerH = 9.5;
+      const metaH = 9.5;
+      const rowH = 7;
+      const headerH = rowH;
+      const itemsH = order.items.length * rowH;
+      const shippingH = 6;
+      const discountH = order.discountAmount > 0 ? 6 : 0;
+      const totalH = 7;
+      const tableH = headerH + itemsH + shippingH + discountH + totalH;
+      const bottomTotalH = metaH + tableH + footerH;
+
+      let bY = BOX_Y + BOX_H - bottomTotalH;
+
+      // Top border of bottom section
+      doc.line(BOX_X, bY, BOX_X + BOX_W, bY);
+
+      // ORDER META STRIP
+      const metaColW = BOX_W / 3;
+      doc.line(BOX_X + metaColW, bY, BOX_X + metaColW, bY + metaH);
+      doc.line(BOX_X + metaColW * 2, bY, BOX_X + metaColW * 2, bY + metaH);
+      doc.line(BOX_X, bY + metaH, BOX_X + BOX_W, bY + metaH);
+
+      doc.setFontSize(7);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(100, 100, 100);
+      doc.text("DATE", BOX_X + metaColW * 0.5, bY + 3.2, { align: "center" });
+      doc.text("ORDER NO", BOX_X + metaColW * 1.5, bY + 3.2, { align: "center" });
+      doc.text("PAYMENT", BOX_X + metaColW * 2.5, bY + 3.2, { align: "center" });
+
+      doc.setFontSize(8);
+      doc.setTextColor(0, 0, 0);
+      doc.text(thermalDate, BOX_X + metaColW * 0.5, bY + 7.5, { align: "center" });
+      doc.text(`#${order.id.slice(-8).toUpperCase()}`, BOX_X + metaColW * 1.5, bY + 7.5, { align: "center" });
+      doc.text(thermalPaymentMethod, BOX_X + metaColW * 2.5, bY + 7.5, { align: "center" });
+
+      bY += metaH;
+
+      // ITEMS TABLE
+      const colItemW = BOX_W * 0.52;
+      const colQtyW = BOX_W * 0.24;
+      const colPriceW = BOX_W * 0.24;
+      const col1X = BOX_X;
+      const col2X = BOX_X + colItemW;
+      const col3X = col2X + colQtyW;
+      const colRightX = BOX_X + BOX_W;
+
+      // Header
+      doc.setFillColor(240, 240, 240);
+      doc.rect(BOX_X, bY, BOX_W, rowH, "F");
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "bold");
+      doc.text("ITEM", col1X + 3, bY + rowH - 2.2);
+      doc.text("QUANTITY", col2X + colQtyW / 2, bY + rowH - 2.2, { align: "center" });
+      doc.text("PRICE", colRightX - 3, bY + rowH - 2.2, { align: "right" });
+
+      doc.line(col2X, bY, col2X, bY + rowH);
+      doc.line(col3X, bY, col3X, bY + rowH);
+      doc.line(BOX_X, bY + rowH, colRightX, bY + rowH);
+
+      bY += rowH;
+
+      // Items
+      order.items.forEach((item) => {
+        const prevY = bY;
+        bY += rowH;
+        const itemName = (item.product?.name ?? "Product").toUpperCase();
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        const splitName = doc.splitTextToSize(itemName, colItemW - 5);
+        doc.text(splitName[0] || itemName, col1X + 3, bY - 2.2);
+
+        doc.text(String(item.quantity), col2X + colQtyW / 2, bY - 2.2, { align: "center" });
+        doc.text(`Rs. ${Math.round(item.price * item.quantity)}`, colRightX - 3, bY - 2.2, { align: "right" });
+
+        doc.line(col2X, prevY, col2X, bY);
+        doc.line(col3X, prevY, col3X, bY);
+        doc.line(BOX_X, bY, colRightX, bY);
+      });
+
+      // Shipping Charges
+      {
+        bY += 6;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        doc.text("SHIPPING CHARGES", col1X + 3, bY - 1.8);
+        const shipText = order.shippingCharge > 0 ? `Rs. ${Math.round(order.shippingCharge)}` : "FREE";
+        doc.text(shipText, colRightX - 3, bY - 1.8, { align: "right" });
+        doc.line(BOX_X, bY, colRightX, bY);
+      }
+
+      // Discount if any
+      if (order.discountAmount > 0) {
+        bY += 6;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        const discText = `DISCOUNT${order.coupon ? ` (${order.coupon.code})` : ""}`;
+        doc.text(discText, col1X + 3, bY - 1.8);
+        doc.text(`-Rs. ${Math.round(order.discountAmount)}`, colRightX - 3, bY - 1.8, { align: "right" });
+        doc.line(BOX_X, bY, colRightX, bY);
+      }
+
+      // Total
+      {
+        bY += 7;
+        doc.setFillColor(245, 245, 245);
+        doc.rect(BOX_X, bY - 7, BOX_W, 7, "F");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.text("TOTAL AMOUNT", col1X + 3, bY - 2.2);
+        doc.text(`Rs. ${Math.round(order.finalAmount)}`, colRightX - 3, bY - 2.2, { align: "right" });
+        doc.line(BOX_X, bY, colRightX, bY);
+      }
+
+      // SOLID BLACK FOOTER BANNER
+      doc.setFillColor(0, 0, 0);
+      doc.rect(BOX_X, bY, BOX_W, footerH, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.text("THANK YOU FOR YOUR ORDER", PAGE_W / 2, bY + 6.2, { align: "center" });
     });
 
-    const filename = `Invoices-Thermal-Batch-${new Date().toISOString().slice(0, 10)}.pdf`;
+    const filename = `Shipping-Labels-4x6-Batch-${new Date().toISOString().slice(0, 10)}.pdf`;
     doc.save(filename);
-    setShowConfirm(true);
+    handleAutoMarkPrinted(true);
   };
 
-  // ── Mark Invoices as Printed Handler ─────────────────────────────────────────
-  const handleMarkPrinted = async () => {
+  // ── Auto-Mark Invoices Printed / Unprinted Handler ─────────────────────────────
+  const handleAutoMarkPrinted = async (printed = true) => {
+    if (orders.length === 0) return;
     try {
       setMarking(true);
       const orderIdsToMark = orders.map((o) => o.id);
       await api.post("/order/mark-invoices-printed", {
         orderIds: orderIdsToMark,
-        printed: true,
+        printed,
       });
-      toast.success(`Marked ${orderIdsToMark.length} orders as printed!`);
+      const now = new Date().toISOString();
+      setOrders((prev) =>
+        prev.map((o) => ({
+          ...o,
+          invoicePrinted: printed,
+          invoicePrintedAt: printed ? now : null,
+        }))
+      );
+      toast.success(
+        printed
+          ? `Order confirmation slips dispatched & marked as printed (${orderIdsToMark.length} orders)`
+          : `Marked ${orderIdsToMark.length} order(s) as unprinted`
+      );
       onSuccess();
-      onClose();
     } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? "Failed to mark orders as printed");
+      toast.error(err?.response?.data?.message ?? "Failed to update print status");
     } finally {
       setMarking(false);
     }
@@ -340,7 +443,7 @@ export default function BulkInvoiceModal({
             </div>
             <div>
               <h2 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
-                Batch Invoice Printing
+                Batch Shipping Label Printing
                 {!loading && (
                   <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-700 font-bold">
                     {orders.length} {orders.length === 1 ? "order" : "orders"}
@@ -348,7 +451,7 @@ export default function BulkInvoiceModal({
                 )}
               </h2>
               <p className="text-xs text-slate-500 font-medium">
-                Download or print multiple invoices at once without individual page navigation.
+                Download or print multiple shipping labels at once without individual page navigation.
               </p>
             </div>
           </div>
@@ -367,7 +470,7 @@ export default function BulkInvoiceModal({
             <div className="py-20 flex flex-col items-center justify-center gap-3">
               <ClipLoader color="#4f46e5" size={36} />
               <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Compiling invoice data…
+                Compiling shipping label data…
               </p>
             </div>
           ) : orders.length === 0 ? (
@@ -375,9 +478,9 @@ export default function BulkInvoiceModal({
               <div className="p-3 bg-emerald-50 text-emerald-600 rounded-full w-fit mx-auto border border-emerald-100">
                 <PackageCheck className="size-8" />
               </div>
-              <h3 className="text-base font-bold text-slate-900">All invoices are up to date!</h3>
+              <h3 className="text-base font-bold text-slate-900">All shipping labels are up to date!</h3>
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                No unprinted invoices found for the selected criteria. When new orders arrive, they will appear here.
+                No unprinted shipping labels found for the selected criteria. When new orders arrive, they will appear here.
               </p>
             </div>
           ) : (
@@ -385,7 +488,7 @@ export default function BulkInvoiceModal({
               {/* Summary Stats Row */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Invoices</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Labels</p>
                   <p className="text-xl font-black text-slate-900 mt-1">{orders.length}</p>
                 </div>
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
@@ -395,28 +498,9 @@ export default function BulkInvoiceModal({
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Target Format</p>
                   <div className="flex items-center gap-1.5 mt-1">
-                    <button
-                      type="button"
-                      onClick={() => setFormat("A4")}
-                      className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
-                        format === "A4"
-                          ? "bg-slate-900 text-white shadow-xs"
-                          : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
-                      }`}
-                    >
-                      A4 Full Page
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFormat("THERMAL")}
-                      className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
-                        format === "THERMAL"
-                          ? "bg-slate-900 text-white shadow-xs"
-                          : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
-                      }`}
-                    >
-                      Thermal (80mm)
-                    </button>
+                    <span className="px-3 py-1 text-xs font-bold rounded-lg bg-slate-900 text-white shadow-xs">
+                      Shipping Label
+                    </span>
                   </div>
                 </div>
               </div>
@@ -425,7 +509,7 @@ export default function BulkInvoiceModal({
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                    Invoices in this batch ({orders.length})
+                    Shipping labels in this batch ({orders.length})
                   </p>
                   <span className="text-[11px] text-slate-400">
                     Chronological order (oldest to newest)
@@ -453,11 +537,11 @@ export default function BulkInvoiceModal({
                           {fmtCurrency(o.finalAmount)}
                         </span>
                         {o.invoicePrinted ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-600 text-white shadow-xs">
                             Printed
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-500 text-white shadow-xs">
                             Unprinted
                           </span>
                         )}
@@ -467,38 +551,26 @@ export default function BulkInvoiceModal({
                 </div>
               </div>
 
-              {/* Post-Print Confirmation Box */}
-              {showConfirm && (
-                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 space-y-3 animate-fadeIn">
-                  <div className="flex items-start gap-3">
-                    <CheckCircle2 className="size-5 text-amber-600 shrink-0 mt-0.5" />
-                    <div>
-                      <h4 className="text-sm font-bold text-amber-900">
-                        Print / Download Action Dispatched
-                      </h4>
-                      <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
-                        Did your invoices print or save successfully? Marking them as printed removes them from future unprinted batches, preventing duplicate prints.
-                      </p>
-                    </div>
+              {/* Batch Print Status Strip with Quick Undo */}
+              {orders.length > 0 && orders.some((o) => o.invoicePrinted) && (
+                <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200/80 flex flex-wrap items-center justify-between gap-3 animate-fadeIn">
+                  <div className="flex items-center gap-2.5">
+                    <CheckCircle2 className="size-4.5 text-emerald-600 shrink-0" />
+                    <p className="text-xs font-semibold text-emerald-900">
+                      {orders.every((o) => o.invoicePrinted)
+                        ? "All shipping labels in this batch are marked as printed."
+                        : `${orders.filter((o) => o.invoicePrinted).length} of ${orders.length} shipping labels marked as printed.`}
+                    </p>
                   </div>
-                  <div className="flex items-center gap-2 pt-1 sm:justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirm(false)}
-                      className="px-3 py-1.5 rounded-xl border border-amber-300 text-amber-900 hover:bg-amber-100/60 text-xs font-semibold transition cursor-pointer"
-                    >
-                      Keep Unprinted
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleMarkPrinted}
-                      disabled={marking}
-                      className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-amber-700 text-white hover:bg-amber-800 text-xs font-bold shadow-xs transition cursor-pointer disabled:opacity-50"
-                    >
-                      {marking ? <ClipLoader color="white" size={14} /> : <CheckCircle2 className="size-3.5" />}
-                      Yes, Mark All as Printed
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    disabled={marking}
+                    onClick={() => handleAutoMarkPrinted(false)}
+                    className="px-3 py-1.5 text-xs font-bold rounded-xl border border-emerald-300 text-emerald-800 hover:bg-emerald-100 transition cursor-pointer disabled:opacity-50"
+                    title="Revert print status back to unprinted if needed"
+                  >
+                    Mark All as Unprinted
+                  </button>
                 </div>
               )}
             </>
@@ -517,25 +589,22 @@ export default function BulkInvoiceModal({
 
           {!loading && orders.length > 0 && (
             <div className="flex items-center gap-2">
-              {format === "A4" ? (
-                <button
-                  type="button"
-                  onClick={handleA4Print}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-indigo-600 text-white font-bold text-xs shadow-md hover:bg-indigo-700 active:scale-98 transition cursor-pointer"
-                >
-                  <Printer className="size-4" />
-                  Print All A4 Invoices ({orders.length})
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleDownloadThermalPdf}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-slate-900 text-white font-bold text-xs shadow-md hover:bg-slate-800 active:scale-98 transition cursor-pointer"
-                >
-                  <Download className="size-4" />
-                  Download Thermal Receipts PDF ({orders.length})
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white border border-slate-200 text-slate-800 font-bold text-xs shadow-xs hover:bg-slate-50 active:scale-98 transition cursor-pointer"
+              >
+                <Printer className="size-4" />
+                Print All ({orders.length})
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadThermalPdf}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-slate-900 text-white font-bold text-xs shadow-md hover:bg-slate-800 active:scale-98 transition cursor-pointer"
+              >
+                <Download className="size-4" />
+                Download PDF ({orders.length})
+              </button>
             </div>
           )}
         </div>
@@ -545,144 +614,179 @@ export default function BulkInvoiceModal({
       {createPortal(
         <div id="bulk-invoice-print-container" className="hidden print:block w-full bg-white">
           {orders.map((order) => {
-            const invoiceNumber = `INV-${order.id.slice(-10).toUpperCase()}`;
-            const invoiceDate = new Date(order.createdAt).toLocaleDateString("en-IN", {
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            });
             const addr = order.shippingAddress ?? {};
+            const customerName = (addr as any)?.fullName || (addr as any)?.name || order.user?.username || "Customer";
+            const customerPhone = (addr as any)?.phone || order.user?.phone || "";
+            const secondaryPhone = addr?.secondaryPhone || (addr as any)?.alternatePhone || "";
+            const phoneNumbers = Array.from(new Set([customerPhone, secondaryPhone].filter(Boolean))).join(", ");
+            const fullAddress = addr.fullAddress || (addr as any)?.address || "";
+
+            const addressLines: string[] = [];
+            if (fullAddress) {
+              fullAddress
+                .split(/\n+/)
+                .flatMap((part) => part.split(","))
+                .map((s) => s.trim())
+                .filter(Boolean)
+                .forEach((item) => {
+                  addressLines.push(item.toUpperCase());
+                });
+            }
+            if (addr.locality && addr.locality.trim()) {
+              const rawLoc = addr.locality.trim();
+              const isAlreadyPresent = addressLines.some((l) =>
+                l.toLowerCase().includes(rawLoc.toLowerCase())
+              );
+              if (!isAlreadyPresent) {
+                const hasPoSuffix = /(?:\b(?:p\.?o\.?|s\.?o\.?|b\.?o\.?|h\.?o\.?|post\s*office)|\(p\.?o\.?\))$/i.test(rawLoc);
+                const formattedLoc = hasPoSuffix ? rawLoc : `${rawLoc} P.O.`;
+                addressLines.push(formattedLoc.toUpperCase());
+              }
+            }
+            const cityStateZip = [addr.city, addr.state].filter(Boolean).join(", ") + (addr.zipCode ? ` - ${addr.zipCode}` : "");
+            if (cityStateZip && !addressLines.some((l) => l.includes(addr.zipCode || "____"))) {
+              addressLines.push(cityStateZip.toUpperCase());
+            }
+
+            const thermalDate = formatThermalDate(order.createdAt);
+            const thermalPaymentMethod = getThermalPaymentMethod(order.paymentMethod);
 
             return (
-              <div key={order.id} className="bulk-invoice-sheet bg-white">
-                <div>
-                  {/* Header */}
-                  <div className="flex items-center justify-between pb-6 border-b-2 border-gray-900">
-                    <div>
-                      <h1 className="text-2xl font-black tracking-tight text-gray-950 uppercase">{companyName}</h1>
-                      <p className="text-xs text-gray-500 mt-0.5">{companyTagline}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Tax Invoice</p>
-                      <p className="text-base font-bold font-mono text-gray-900 mt-0.5">{invoiceNumber}</p>
-                      <p className="text-xs text-gray-500 mt-1">{invoiceDate}</p>
-                    </div>
-                  </div>
-
-                  {/* Order Meta Strip */}
-                  <div className="grid grid-cols-4 gap-3 py-3.5 border-b border-gray-200 text-xs bg-gray-50/60 px-4 rounded-xl my-4">
-                    <div>
-                      <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block">Order ID</span>
-                      <span className="font-mono font-bold text-gray-900">#{order.id.slice(-8).toUpperCase()}</span>
-                    </div>
-                    <div>
-                      <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block">Order Status</span>
-                      <span className="font-bold text-gray-900">{order.orderStatus}</span>
-                    </div>
-                    <div>
-                      <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block">Payment</span>
-                      <span className="font-bold text-gray-900">{order.paymentStatus ?? "Pending"}</span>
-                    </div>
-                    <div>
-                      <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block">Method</span>
-                      <span className="font-bold text-gray-900">
-                        {order.paymentMethod === "ONLINE" ? "Online" : order.paymentMethod === "QR" ? "QR Code" : "POD"}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Addresses */}
-                  <div className="grid grid-cols-2 gap-6 my-5 text-xs text-gray-700">
-                    <div className="p-4 rounded-xl border border-gray-200 bg-gray-50/40">
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Bill To</p>
-                      {order.user ? (
-                        <div className="space-y-0.5">
-                          <p className="font-bold text-gray-950 text-sm">{order.user.username}</p>
-                          <p>{order.user.email}</p>
-                          {order.user.phone && <p>{order.user.phone}</p>}
-                        </div>
-                      ) : (
-                        <p className="italic text-gray-400">Customer info unavailable</p>
-                      )}
-                    </div>
-
-                    <div className="p-4 rounded-xl border border-gray-200 bg-gray-50/40">
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Ship To</p>
-                      <div className="space-y-0.5">
-                        {addr.fullAddress && <p className="font-medium text-gray-900">{addr.fullAddress}</p>}
-                        <p>
-                          {[addr.city, addr.state].filter(Boolean).join(", ")}
-                          {addr.zipCode ? ` – ${addr.zipCode}` : ""}
+              <div key={order.id} className="bulk-invoice-sheet bg-white p-[0.12in] box-border">
+                <div className="border-[1.5px] border-black flex flex-col justify-between h-full font-sans text-black bg-white">
+                  {/* 1. CUSTOMER DELIVERY ADDRESS (TO:) - Bold with Space After */}
+                  <div className="p-4 bg-white">
+                    <p className="text-xs font-black uppercase tracking-wider text-black mb-1.5">
+                      TO:
+                    </p>
+                    <p className="text-base font-black uppercase text-black leading-tight">
+                      {customerName}
+                    </p>
+                    <div className="mt-1.5 space-y-0.5">
+                      {addressLines.map((line, idx) => (
+                        <p key={idx} className="text-sm font-bold uppercase text-black leading-snug">
+                          {line}
                         </p>
-                        {addr.country && <p>{addr.country}</p>}
-                      </div>
+                      ))}
                     </div>
+                    {phoneNumbers && (
+                      <p className="mt-2.5 text-sm font-black uppercase text-black">
+                        MOB: {phoneNumbers}
+                      </p>
+                    )}
                   </div>
 
-                  {/* Items Table */}
-                  <div className="my-5">
-                    <table className="w-full text-xs text-left">
-                      <thead>
-                        <tr className="border-b-2 border-gray-900 text-[10px] font-bold uppercase tracking-wider text-gray-500">
-                          <th className="py-2.5">Item</th>
-                          <th className="py-2.5 text-center">Qty</th>
-                          <th className="py-2.5 text-right">Unit Price</th>
-                          <th className="py-2.5 text-right">Amount</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {order.items.map((item, i) => (
-                          <tr key={i} className="invoice-item-row">
-                            <td className="py-3">
-                              <p className="font-semibold text-gray-900">{item.product?.name ?? "Product"}</p>
+                  {/* BOTTOM SECTION (Meta Strip + Table + Charges + Footer Banner) */}
+                  <div className="mt-auto border-t-[1.5px] border-black">
+                    {/* 2. ORDER META STRIP */}
+                    <div className="grid grid-cols-3 border-b-[1.5px] border-black text-xs divide-x-[1.5px] divide-black bg-gray-50">
+                      <div className="px-2 py-1.5 text-center">
+                        <p className="text-[8.5px] font-black uppercase tracking-wider text-gray-500">DATE</p>
+                        <p className="text-[10.5px] font-bold text-black uppercase mt-0.5">{thermalDate}</p>
+                      </div>
+                      <div className="px-2 py-1.5 text-center">
+                        <p className="text-[8.5px] font-black uppercase tracking-wider text-gray-500">ORDER NO</p>
+                        <p className="text-[10.5px] font-mono font-bold text-black uppercase mt-0.5">#{order.id.slice(-8).toUpperCase()}</p>
+                      </div>
+                      <div className="px-2 py-1.5 text-center">
+                        <p className="text-[8.5px] font-black uppercase tracking-wider text-gray-500">PAYMENT</p>
+                        <p className="text-[10px] font-bold text-black uppercase mt-0.5 truncate">{thermalPaymentMethod}</p>
+                      </div>
+                    </div>
+
+                    {/* 3. ITEMS TABLE */}
+                    <div className="border-b-[1.5px] border-black">
+                      {/* Table Header: ITEM | QUANTITY | PRICE */}
+                      <div className="flex border-b-[1.5px] border-black text-[10px] font-black uppercase tracking-wider text-black bg-gray-100">
+                        <div className="w-[52%] px-2.5 py-1.5 border-r-[1.5px] border-black text-left">
+                          ITEM
+                        </div>
+                        <div className="w-[24%] px-2.5 py-1.5 border-r-[1.5px] border-black text-center">
+                          QUANTITY
+                        </div>
+                        <div className="w-[24%] px-2.5 py-1.5 text-right">
+                          PRICE
+                        </div>
+                      </div>
+
+                      {/* Items Rows */}
+                      {order.items.map((item: any, idx: number) => {
+                        const originalPrice = getItemOriginalPrice(item);
+                        const hasSavings = originalPrice && originalPrice > item.price;
+
+                        return (
+                          <div key={idx} className="flex border-b border-black text-xs text-black last:border-b-0">
+                            <div className="w-[52%] px-2.5 py-1.5 border-r-[1.5px] border-black text-left">
+                              <p className="font-bold text-[11px] uppercase leading-tight">
+                                {item.product?.name ?? "Product Unavailable"}
+                              </p>
                               {formatVariant(item.variant) && (
-                                <p className="text-[10px] font-medium text-indigo-600 mt-0.5">{formatVariant(item.variant)}</p>
+                                <p className="text-[9.5px] font-medium text-gray-600 mt-0.5">
+                                  {formatVariant(item.variant)}
+                                </p>
                               )}
-                            </td>
-                            <td className="py-3 text-center text-gray-700 font-medium">{item.quantity}</td>
-                            <td className="py-3 text-right text-gray-700">{fmtCurrency(item.price)}</td>
-                            <td className="py-3 text-right font-bold text-gray-900">{fmtCurrency(item.price * item.quantity)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                              {hasSavings && (
+                                <p className="text-[9px] font-bold text-gray-700 mt-0.5">
+                                  Save ₹{Math.round((originalPrice - item.price) * item.quantity)}
+                                </p>
+                              )}
+                            </div>
+                            <div className="w-[24%] px-2.5 py-1.5 border-r-[1.5px] border-black text-center font-bold tabular-nums">
+                              {item.quantity}
+                            </div>
+                            <div className="w-[24%] px-2.5 py-1.5 text-right tabular-nums">
+                              {hasSavings && (
+                                <div className="text-[9.5px] text-gray-500 line-through leading-tight">
+                                  ₹{Math.round(originalPrice * item.quantity)}
+                                </div>
+                              )}
+                              <div className="font-bold leading-tight">
+                                ₹{Math.round(item.price * item.quantity)}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
 
-                  {/* Totals Section */}
-                  <div className="flex justify-end pt-4 border-t border-gray-200 text-xs invoice-totals-block">
-                    <div className="w-64 space-y-1.5">
-                      <div className="flex justify-between text-gray-600">
-                        <span>Subtotal</span>
-                        <span>{fmtCurrency(order.totalAmount)}</span>
+                    {/* 4. CHARGES & TOTAL */}
+                    <div className="border-b-[1.5px] border-black text-xs">
+                      {/* Shipping */}
+                      <div className="flex justify-between border-b border-black px-3 py-1 font-bold text-black">
+                        <span className="text-[10px] uppercase text-gray-700">SHIPPING CHARGES</span>
+                        <span className="text-[11px] tabular-nums font-mono">
+                          {order.shippingCharge > 0 ? `₹${Math.round(order.shippingCharge)}` : "FREE"}
+                        </span>
                       </div>
-                      <div className="flex justify-between text-gray-600">
-                        <span>Shipping</span>
-                        <span>{order.shippingCharge > 0 ? fmtCurrency(order.shippingCharge) : "Free"}</span>
-                      </div>
+
+                      {/* Discount if any */}
                       {order.discountAmount > 0 && (
-                        <div className="flex justify-between text-emerald-600 font-medium">
-                          <span>Discount{order.coupon ? ` (${order.coupon.code})` : ""}</span>
-                          <span>-{fmtCurrency(order.discountAmount)}</span>
+                        <div className="flex justify-between border-b border-black px-3 py-1 font-bold text-black">
+                          <span className="text-[10px] uppercase text-gray-700">
+                            DISCOUNT{order.coupon ? ` (${order.coupon.code})` : ""}
+                          </span>
+                          <span className="text-[11px] tabular-nums font-mono text-emerald-800">
+                            -₹{Math.round(order.discountAmount)}
+                          </span>
                         </div>
                       )}
-                      {order.taxAmount > 0 && (
-                        <div className="flex justify-between text-gray-600">
-                          <span>Tax</span>
-                          <span>{fmtCurrency(order.taxAmount)}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between font-black text-sm border-t-2 border-gray-950 pt-2 text-gray-950">
-                        <span>TOTAL</span>
-                        <span>{fmtCurrency(order.finalAmount)}</span>
+
+                      {/* Grand Total */}
+                      <div className="flex justify-between px-3 py-1.5 font-black text-black bg-gray-50">
+                        <span className="text-xs uppercase tracking-wide">TOTAL AMOUNT</span>
+                        <span className="text-sm tabular-nums font-mono">
+                          ₹{Math.round(order.finalAmount)}
+                        </span>
                       </div>
                     </div>
-                  </div>
-                </div>
 
-                {/* Footer */}
-                <div className="mt-8 pt-4 border-t border-gray-100 text-center text-[10px] text-gray-400 invoice-footer-block">
-                  <p>Thank you for shopping with {companyName}.</p>
-                  <p className="mt-1">Computer-generated invoice · No signature required.</p>
+                    {/* 5. SOLID BLACK FOOTER BANNER */}
+                    <div className="bg-black text-white text-center py-2.5 px-3">
+                      <p className="font-black text-xs uppercase tracking-widest leading-none">
+                        THANK YOU FOR YOUR ORDER
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             );
@@ -691,8 +795,12 @@ export default function BulkInvoiceModal({
         document.body
       )}
 
-      {/* ── Global Print Styles for Strict 1-Invoice-Per-A4 Sheet ── */}
+      {/* ── Global Print Styles ── */}
       <style>{`
+        @page {
+          size: 4in 6in;
+          margin: 0mm !important;
+        }
         @media print {
           /* Hide everything on document body except the portal print container */
           body > *:not(#bulk-invoice-print-container) {
@@ -705,7 +813,7 @@ export default function BulkInvoiceModal({
             margin: 0 !important;
             padding: 0 !important;
             background: #ffffff !important;
-            width: 100% !important;
+            width: 4in !important;
             height: auto !important;
             min-height: 0 !important;
             overflow: visible !important;
@@ -713,18 +821,19 @@ export default function BulkInvoiceModal({
           #bulk-invoice-print-container {
             display: block !important;
             position: static !important;
-            width: 100% !important;
+            width: 4in !important;
             margin: 0 !important;
             padding: 0 !important;
           }
           .bulk-invoice-sheet {
-            display: flex !important;
-            flex-direction: column !important;
-            justify-content: space-between !important;
-            width: 100% !important;
-            min-height: 296mm !important;
+            display: block !important;
+            width: 4in !important;
+            max-width: 4in !important;
+            min-height: 5.9in !important;
+            height: 5.95in !important;
+            max-height: 6in !important;
             box-sizing: border-box !important;
-            padding: 16mm 20mm !important;
+            padding: 0.12in !important;
             background: #ffffff !important;
             page-break-after: always !important;
             break-after: page !important;
@@ -735,21 +844,10 @@ export default function BulkInvoiceModal({
             page-break-after: auto !important;
             break-after: auto !important;
           }
-          /* Protect table rows and totals from breaking awkwardly across page edges */
-          .invoice-item-row,
-          .invoice-totals-block,
-          .invoice-footer-block {
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-          }
           #bulk-invoice-print-container, #bulk-invoice-print-container * {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
             color-adjust: exact !important;
-          }
-          @page {
-            size: A4 portrait;
-            margin: 0;
           }
         }
       `}</style>

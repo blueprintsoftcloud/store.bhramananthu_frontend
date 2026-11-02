@@ -124,7 +124,7 @@ const ProductCard = ({ product }: { product: Product }) => {
   return (
     <div 
       onClick={handleCardClick}
-      className="group relative aspect-[3/4] w-full cursor-pointer overflow-hidden rounded-[2rem] bg-gray-100 transition-all duration-500 hover:shadow-2xl hover:-translate-y-2"
+      className="group relative aspect-[5/7] w-full cursor-pointer overflow-hidden rounded-[2rem] bg-gray-100 transition-all duration-500 hover:shadow-2xl hover:-translate-y-2"
     >
       {/* 1. Background Image */}
       <img
@@ -135,13 +135,6 @@ const ProductCard = ({ product }: { product: Product }) => {
 
       {/* 2. Gradient Overlay */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/0 to-black/0 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-
-      {/* 3. Top Left: Category Tag */}
-      <div className="absolute left-4 top-4">
-        <span className="inline-flex items-center rounded-full bg-white/90 px-3 py-1 text-xs font-bold uppercase tracking-wider text-gray-900 backdrop-blur-md shadow-sm">
-          {categoryName || "Collection"}
-        </span>
-      </div>
 
       {/* 4. Top Right: Action Buttons */}
       <div className="absolute right-4 top-4 flex flex-col gap-3">

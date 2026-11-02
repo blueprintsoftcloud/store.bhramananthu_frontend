@@ -1,1 +1,87 @@
 @import "tailwindcss";
+
+:root {
+  --bg-page: #FAF8F2;
+  --bg-alt: #F1E9DA;
+  --text-main: #172B2A;
+  --text-secondary: #34504D;
+  --primary-teal: #0B6B6B;
+  --primary-hover: #084F4F;
+  --topbar-teal: #DDEDEA;
+  --offer-gold: #E7A93A;
+  --font-heading: 'Literata', Georgia, serif;
+  --font-body: 'Atkinson Hyperlegible', sans-serif;
+  --font-malayalam: 'Noto Sans Malayalam', sans-serif;
+}
+
+html, body, #root {
+  background-color: #FAF8F2;
+  color: #172B2A;
+  min-height: 100vh;
+}
+
+/* Accessible text zoom toggles: A, A+, A++ (Defaults to A++ / xlarge) */
+html:not([data-text-size]),
+html[data-text-size="xlarge"] {
+  font-size: 16px;
+}
+html[data-text-size="normal"] {
+  font-size: 14px;
+}
+html[data-text-size="large"] {
+  font-size: 15px;
+}
+
+@media (min-width: 640px) {
+  html:not([data-text-size]),
+  html[data-text-size="xlarge"] {
+    font-size: 20px;
+  }
+  html[data-text-size="normal"] {
+    font-size: 16px;
+  }
+  html[data-text-size="large"] {
+    font-size: 18px;
+  }
+}
+
+.font-heading {
+  font-family: 'Literata', Georgia, serif;
+}
+
+.font-body {
+  font-family: 'Atkinson Hyperlegible', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.font-malayalam {
+  font-family: 'Noto Sans Malayalam', sans-serif;
+}
+
+/* Guarantee header navigation items stay on a single line across all zoom levels */
+header nav a {
+  white-space: nowrap !important;
+}
+
+/* Suppress browser print headers and footers (URL, page numbers, date stamps) across all print views */
+@page {
+  margin: 0mm !important;
+}
+
+@media print {
+  @page {
+    margin: 0mm !important;
+  }
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+}
+
+/* Panakkal Brand Toast Styling Refinement */
+div[data-toaster-wrapper] {
+  z-index: 99999 !important;
+}
+
+div[data-toaster-wrapper] > div {
+  max-width: min(92vw, 420px) !important;
+}

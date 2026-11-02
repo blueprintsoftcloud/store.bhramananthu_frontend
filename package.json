@@ -21,6 +21,8 @@
     "dompurify": "^3.4.13",
     "exceljs": "^4.4.0",
     "framer-motion": "^12.23.26",
+    "html2canvas": "^1.4.1",
+    "html2canvas-pro": "^2.4.5",
     "jspdf": "^4.2.1",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.548.0",

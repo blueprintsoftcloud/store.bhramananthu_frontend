@@ -3,7 +3,6 @@ import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { createPortal } from "react-dom";
 import { Link, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { PulseLoader } from "react-spinners";
 import { FaUserCircle } from "react-icons/fa";
 import logo123 from "../assets/logo.png";
 import api from "../utils/api";
@@ -29,7 +28,9 @@ import {
   HomeIcon,
   XMarkIcon,
   TagIcon,
+  CubeIcon,
   ShoppingBagIcon,
+  ShoppingCartIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -40,7 +41,6 @@ import {
   Cog6ToothIcon,
   TicketIcon,
   ChartBarIcon,
-  ComputerDesktopIcon,
   EyeIcon,
   DocumentTextIcon,
 } from "@heroicons/react/24/outline";
@@ -62,6 +62,34 @@ function buildNav(permissions: StaffPermission[]): NavItem[] {
     { name: "Dashboard", href: "/staff-dashboard", icon: HomeIcon },
   ];
 
+  if (has("ORDER_CREATE")) {
+    items.push({
+      name: "Place Order",
+      href: "/staff-dashboard/place-order",
+      icon: ShoppingCartIcon,
+    });
+  }
+
+  if (has("ORDER_VIEW", "ORDER_UPDATE")) {
+    items.push({
+      name: "Order Management",
+      href: "/staff-dashboard/order-management",
+      icon: ShoppingBagIcon,
+    });
+  }
+
+  if (
+    has(
+      "PRODUCT_VIEW", "PRODUCT_ADD", "PRODUCT_EDIT", "PRODUCT_DELETE",
+    )
+  ) {
+    items.push({
+      name: "Products & Stock",
+      href: "/staff-dashboard/products",
+      icon: CubeIcon,
+    });
+  }
+
   // Category Management + Product Management merged into one Catalog Management
   // browser (see categories/Listcategory.tsx) — shown for either permission group,
   // since which contextual actions (add subcategory vs add product) actually appear
@@ -73,14 +101,6 @@ function buildNav(permissions: StaffPermission[]): NavItem[] {
     )
   ) {
     items.push({ name: "Catalog Management", href: "/staff-dashboard/manage-catalog", icon: TagIcon });
-  }
-
-  if (has("ORDER_VIEW", "ORDER_UPDATE")) {
-    items.push({
-      name: "Order Management",
-      href: "/staff-dashboard/order-management",
-      icon: ShoppingBagIcon,
-    });
   }
 
   if (has("COUPON_VIEW", "COUPON_ADD", "COUPON_EDIT", "COUPON_DELETE")) {
@@ -96,19 +116,6 @@ function buildNav(permissions: StaffPermission[]): NavItem[] {
       name: "Reports & Analytics",
       href: "/staff-dashboard/reports",
       icon: ChartBarIcon,
-    });
-  }
-
-  if (has("BANNER_VIEW", "BANNER_ADD", "BANNER_EDIT", "BANNER_DELETE")) {
-    items.push({
-      name: "Homepage Manager",
-      href: "/staff-dashboard/homepage",
-      icon: ComputerDesktopIcon,
-    });
-    items.push({
-      name: "Content Pages",
-      href: "/staff-dashboard/content-pages",
-      icon: DocumentTextIcon,
     });
   }
 
@@ -222,9 +229,9 @@ const CollapsedNavItem = ({
             onMouseEnter={openFlyout}
             onMouseLeave={scheduleClose}
             style={{ position: "fixed", top: flyoutPos.top, left: flyoutPos.left }}
-            className="z-50 w-48 rounded-md border border-slate-100 bg-white p-1 shadow-lg"
+            className="z-50 w-48 rounded-xl border border-[#CFE5E1] bg-[#EBF5F3] p-1.5 shadow-2xl text-[#173836]"
           >
-            <div className="px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">
+            <div className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-[#4D7C79]">
               {item.name}
             </div>
             {item.subLinks!.map((sub) => {
@@ -236,9 +243,9 @@ const CollapsedNavItem = ({
                   onClick={onLinkClick}
                   className={classNames(
                     isSubActive
-                      ? "bg-slate-200 text-slate-950 font-bold"
-                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
-                    "block px-3 py-2 rounded-md text-sm/6 font-semibold transition-colors duration-200 whitespace-nowrap",
+                      ? "bg-[#0B6B6B] text-white font-bold shadow-xs"
+                      : "text-[#244E4C] hover:bg-[#D9ECE8] hover:text-[#0B6B6B]",
+                    "block px-3 py-2 rounded-lg text-sm/6 font-semibold transition-colors duration-200 whitespace-nowrap",
                   )}
                 >
                   {sub.name}
@@ -284,9 +291,10 @@ const NavLink = ({
     item.subLinks!.some((sub) => location.pathname.startsWith(sub.href));
 
   const baseClasses =
-    "group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold transition-colors duration-200 cursor-pointer";
-  const activeClasses = "bg-slate-100 text-slate-900 font-bold";
-  const inactiveClasses = "text-slate-600 hover:bg-slate-50 hover:text-slate-900";
+    "group flex gap-x-3 rounded-xl p-2.5 text-sm/6 font-semibold transition-all duration-200 cursor-pointer";
+  const activeClasses = "bg-[#0B6B6B] text-white font-bold shadow-sm";
+  const inactiveClasses =
+    "text-[#244E4C] hover:bg-[#D9ECE8] hover:text-[#0B6B6B]";
 
   if (!hasSubLinks) {
     return (
@@ -358,9 +366,9 @@ const NavLink = ({
         }}
         transition={{ duration: 0.2 }}
         className={classNames(
-          "mt-1 space-y-1 overflow-hidden ml-4 rounded-md bg-slate-50/80",
+          "mt-1 space-y-1 overflow-hidden ml-4 rounded-xl bg-[#DFEFEA]/80",
           openMenu === item.name || isActiveParent
-            ? "p-1 border border-slate-100"
+            ? "p-1.5 border border-[#CFE5E1]"
             : "p-0 border-0"
         )}
       >
@@ -377,9 +385,9 @@ const NavLink = ({
                 }}
                 className={classNames(
                   isSubActive
-                    ? "bg-slate-200 text-slate-950 font-bold"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
-                  "block px-3 py-2 rounded-md transition-colors duration-200 whitespace-nowrap"
+                    ? "bg-[#0B6B6B] text-white font-bold shadow-xs"
+                    : "text-[#244E4C] hover:bg-[#D4EAE5] hover:text-[#0B6B6B]",
+                  "block px-3 py-2 rounded-lg text-xs font-semibold transition-colors duration-200 whitespace-nowrap"
                 )}
               >
                 {sub.name}
@@ -464,13 +472,13 @@ export default function StaffDashboard() {
         />
         {!collapsed && (
           <div className="flex items-center min-w-0">
-            <div className="h-6 w-px bg-slate-200 mx-1 shrink-0" />
+            <div className="h-6 w-px bg-white/20 mx-1 shrink-0" />
             <div className="flex flex-col justify-center min-w-0 pl-1.5 text-left">
-              <span className="font-extrabold text-xs tracking-tight text-slate-900 truncate leading-tight">
+              <span className="font-extrabold text-xs tracking-tight text-white truncate leading-tight">
                 {branding.companyName || "blueprint_crm"}
               </span>
               {branding.companyTagline && (
-                <span className="text-[10px] text-slate-400 font-medium tracking-wide truncate leading-tight mt-0.5">
+                <span className="text-[10px] text-[#D7ECE8] font-medium tracking-wide truncate leading-tight mt-0.5">
                   {branding.companyTagline}
                 </span>
               )}
@@ -496,20 +504,22 @@ export default function StaffDashboard() {
               ))}
             </ul>
           </li>
-          <a
-            onClick={() => setShowLogoutConfirm(true)}
-            title={collapsed ? "Logout" : undefined}
-            className={classNames(
-              "group -mx-2 flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold text-slate-600 hover:bg-red-50 hover:text-red-600 mt-auto cursor-pointer transition-colors",
-              collapsed && "justify-center",
-            )}
-          >
-            <ArrowRightOnRectangleIcon aria-hidden="true" className="size-6 shrink-0 text-slate-500 group-hover:text-red-600" />
-            {!collapsed && "Logout"}
-          </a>
+          <li className="mt-auto">
+            <a
+              onClick={() => setShowLogoutConfirm(true)}
+              title={collapsed ? "Logout" : undefined}
+              className={classNames(
+                "group -mx-2 flex gap-x-3 rounded-xl p-2.5 text-sm/6 font-semibold text-[#D7ECE8] hover:bg-white/10 hover:text-rose-200 cursor-pointer transition-colors",
+                collapsed && "justify-center",
+              )}
+            >
+              <ArrowRightOnRectangleIcon aria-hidden="true" className="size-6 shrink-0 text-[#D7ECE8] group-hover:text-rose-200" />
+              {!collapsed && "Logout"}
+            </a>
+          </li>
           <li
             className={classNames(
-              "px-2 pb-1 text-[11px] font-medium text-slate-400 select-none",
+              "px-2 pb-1 text-[11px] font-medium text-[#D7ECE8]/60 select-none",
               collapsed && "text-center px-0",
             )}
             title={collapsed ? `v${APP_VERSION}` : undefined}
@@ -520,21 +530,6 @@ export default function StaffDashboard() {
       </nav>
     </>
   );
-
-  if (loading) {
-    return (
-      <div className="flex h-screen w-screen flex-col items-center justify-center bg-slate-50 font-sans">
-        <div className="flex flex-col items-center justify-center gap-6 text-center">
-          <div className="relative flex items-center justify-center w-0 h-0 pl-1.5">
-            <PulseLoader color="#000000" />
-          </div>
-          <p className="text-xs uppercase font-bold tracking-widest text-slate-400 font-mono mt-12 w-full text-center select-none">
-            Loading...
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <>
@@ -569,7 +564,7 @@ export default function StaffDashboard() {
               </TransitionChild>
 
               <div
-                className="relative flex h-full grow flex-col gap-y-5 overflow-y-auto scrollbar-thin px-6 pb-4 border-r border-slate-200 text-slate-900 bg-white"
+                className="relative flex h-full grow flex-col gap-y-5 overflow-y-auto scrollbar-thin px-6 pb-4 border-r border-[#CFE5E1] text-[#173836] bg-[#EBF5F3]"
                 style={{ backgroundColor: "var(--sidebar-start)" }}
               >
                 {sidebarInner(() => setSidebarOpen(false))}
@@ -581,7 +576,7 @@ export default function StaffDashboard() {
         {/* Desktop Sidebar */}
         <div
           className={classNames(
-            "hidden text-slate-900 border-r border-slate-200 lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:flex-col transition-[width] duration-300 ease-in-out",
+            "hidden text-[#173836] border-r border-[#CFE5E1] lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:flex-col transition-[width] duration-300 ease-in-out bg-[#EBF5F3]",
             isSidebarCollapsed ? "lg:w-20" : "lg:w-72",
           )}
           style={{ backgroundColor: "var(--sidebar-start)" }}
@@ -598,7 +593,7 @@ export default function StaffDashboard() {
             type="button"
             onClick={() => setIsSidebarCollapsed((prev) => !prev)}
             title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="absolute top-20 -right-3 hidden lg:flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm hover:text-slate-900 hover:shadow-md transition-colors"
+            className="absolute top-20 -right-3 hidden lg:flex h-6 w-6 items-center justify-center rounded-full border border-[#CFE5E1] bg-white text-[#0B6B6B] shadow-md hover:bg-[#D9ECE8] hover:shadow-lg transition-colors cursor-pointer"
           >
             {isSidebarCollapsed ? (
               <ChevronRightIcon className="size-3.5" />

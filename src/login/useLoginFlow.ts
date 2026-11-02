@@ -5,7 +5,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import api, { refreshAccessToken } from "../utils/api";
+import api from "../utils/api";
 import { useAuth } from "../context/AuthContext";
 
 // ── Step type ─────────────────────────────────────────────────────────────────
@@ -119,8 +119,9 @@ export function useLoginFlow() {
   }, [email, password]);
 
   // ── Step 2 — verify login OTP ─────────────────────────────────────
-  const handleVerifyOtp = useCallback(async () => {
-    if (otp.length !== 6) {
+  const handleVerifyOtp = useCallback(async (customOtp?: string) => {
+    const targetOtp = (customOtp ?? otp).trim();
+    if (targetOtp.length !== 6) {
       toast.error("Please enter the complete 6-digit code", {
         id: "otp-incomplete",
       });
@@ -129,25 +130,41 @@ export function useLoginFlow() {
 
     try {
       setLoading(true);
-      await api.post("/auth/login/verify", { email, otp });
+      const res = await api.post<{ message: string; role?: string }>(
+        "/auth/login/verify",
+        { email, otp: targetOtp },
+        { timeout: 15000 }
+      );
       toast.success("Login successful!", { id: "login-success" });
-      // Obtain a fresh access token now that the session is established,
-      // then update the AuthContext so the redirect effect fires.
-      try {
-        await refreshAccessToken();
-      } catch {
-        // If refresh fails here the checkAuthStatus call below will still
-        // reflect the correct authenticated state via the session cookie.
-      }
-      // checkAuthStatus updates the AuthContext → triggers the redirect useEffect above
+
+      // checkAuthStatus updates the AuthContext with the new session
       await checkAuthStatus();
-    } catch (err) {
-      const status = (err as any)?.response?.status;
+
+      // Immediately redirect to the matching dashboard without waiting for effect cycle
+      const role = (res.data?.role || user.role || "").toUpperCase();
+      redirectedRef.current = true;
+      navigate(
+        role === "STAFF"
+          ? "/staff-dashboard"
+          : role === "SUPER_ADMIN"
+            ? "/super-admin-dashboard"
+            : role === "ADMIN"
+              ? "/admin-dashboard"
+              : "/",
+        { replace: true },
+      );
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string; response?: { status?: number; data?: { message?: string } } };
+      const status = e?.response?.status;
       if (status === 403) {
         toast.error(
           "No active subscription found. Please contact your administrator to proceed.",
           { id: "otp-no-subscription", duration: 6000 },
         );
+      } else if (e?.code === "ECONNABORTED" || e?.message?.includes("timeout")) {
+        toast.error("Verification timed out. Please check your connection and try again.", {
+          id: "otp-timeout",
+        });
       } else {
         toast.error(getErrorMessage(err, "OTP verification failed"), {
           id: "otp-failed",
@@ -156,7 +173,7 @@ export function useLoginFlow() {
     } finally {
       setLoading(false);
     }
-  }, [email, otp, checkAuthStatus]);
+  }, [email, otp, checkAuthStatus, navigate, user.role]);
 
   // ── Resend OTP (login flow) ───────────────────────────────────────
   const handleResendOtp = useCallback(async () => {
@@ -164,7 +181,7 @@ export function useLoginFlow() {
 
     try {
       setLoading(true);
-      await api.post("/auth/resend-otp", { email });
+      await api.post("/auth/resend-otp", { email }, { timeout: 15000 });
       toast.success("OTP resent to your email", { id: "otp-resent" });
       clearOtp();
       startTimer();
@@ -188,7 +205,7 @@ export function useLoginFlow() {
 
     try {
       setLoading(true);
-      await api.post("/auth/forgot-password", { email: resetEmail });
+      await api.post("/auth/forgot-password", { email: resetEmail }, { timeout: 15000 });
       toast.success("OTP sent to your email", { id: "forgot-otp-sent" });
       clearOtp();
       setStep("forgot-otp");
@@ -203,8 +220,9 @@ export function useLoginFlow() {
   }, [resetEmail]);
 
   // ── Forgot step 2 — verify reset OTP ─────────────────────────────
-  const handleVerifyResetOtp = useCallback(async () => {
-    if (otp.length !== 6) {
+  const handleVerifyResetOtp = useCallback(async (customOtp?: string) => {
+    const targetOtp = (customOtp ?? otp).trim();
+    if (targetOtp.length !== 6) {
       toast.error("Please enter the complete 6-digit code", {
         id: "reset-otp-incomplete",
       });
@@ -213,15 +231,22 @@ export function useLoginFlow() {
 
     try {
       setLoading(true);
-      await api.post("/auth/verify-reset-otp", { email: resetEmail, otp });
+      await api.post("/auth/verify-reset-otp", { email: resetEmail, otp: targetOtp }, { timeout: 15000 });
       toast.success("OTP verified — set your new password", {
         id: "reset-otp-verified",
       });
       setStep("forgot-reset");
-    } catch (err) {
-      toast.error(getErrorMessage(err, "Invalid or expired OTP"), {
-        id: "reset-otp-fail",
-      });
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      if (e?.code === "ECONNABORTED" || e?.message?.includes("timeout")) {
+        toast.error("Verification timed out. Please check your connection and try again.", {
+          id: "reset-otp-timeout",
+        });
+      } else {
+        toast.error(getErrorMessage(err, "Invalid or expired OTP"), {
+          id: "reset-otp-fail",
+        });
+      }
     } finally {
       setLoading(false);
     }

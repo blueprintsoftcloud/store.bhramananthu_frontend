@@ -34,9 +34,12 @@ export const useAuth = (): AuthContextValue => {
 
 // ── Provider ───────────────────────────────────────────────────────────────────
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const cachedLoggedIn = typeof window !== "undefined" && localStorage.getItem("isLoggedIn") === "true";
+  const cachedRole = cachedLoggedIn && typeof window !== "undefined" ? localStorage.getItem("userRole") : null;
+
   const [user, setUser] = useState<AuthUser>({
-    role: null,
-    isAuthenticated: false,
+    role: cachedRole,
+    isAuthenticated: cachedLoggedIn,
     isInitialLoad: true,
   });
 
@@ -51,13 +54,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (res.data.isLoggedIn) {
         localStorage.setItem("isLoggedIn", "true");
+        if (res.data.role) {
+          localStorage.setItem("userRole", res.data.role);
+        }
         setUser({
-          role: res.data.role ?? null,
+          role: res.data.role ?? localStorage.getItem("userRole") ?? null,
           isAuthenticated: true,
           isInitialLoad: isInitial ? true : false,
         });
       } else {
         localStorage.removeItem("isLoggedIn");
+        localStorage.removeItem("userRole");
         setUser({ role: null, isAuthenticated: false, isInitialLoad: isInitial ? true : false });
       }
     } catch (err: unknown) {
@@ -67,9 +74,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // session state so a brief backend hiccup doesn't kick the user to the login page.
       if (status === 401 || status === 403) {
         localStorage.removeItem("isLoggedIn");
+        localStorage.removeItem("userRole");
         setUser({ role: null, isAuthenticated: false, isInitialLoad: isInitial ? true : false });
       } else {
-        // Transient error: keep existing auth state, just clear isInitialLoad
+        // Transient error (slow network): keep existing cached auth state, just clear isInitialLoad
         setUser((prev) => ({ ...prev, isInitialLoad: isInitial ? true : false }));
       }
     }
@@ -94,7 +102,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           console.debug("[AuthContext] initial /auth/refresh (page load)");
           const res = await refreshAccessToken();
           if (res.data.isLoggedIn) {
-            refreshedRole = res.data.role ?? null;
+            refreshedRole = res.data.role ?? localStorage.getItem("userRole") ?? null;
             refreshSucceeded = true;
           }
         } catch {
@@ -106,8 +114,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // Trust the refresh response directly — avoids a /auth/status call that
         // could race with cookie propagation on mobile browsers.
         localStorage.setItem("isLoggedIn", "true");
+        if (refreshedRole) {
+          localStorage.setItem("userRole", refreshedRole);
+        }
         setUser({
-          role: refreshedRole,
+          role: refreshedRole ?? localStorage.getItem("userRole") ?? null,
           isAuthenticated: true,
           isInitialLoad: true,  // Will be set to false after the min-duration below
         });
@@ -132,11 +143,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const logout = async (redirectTo?: string) => {
-    // Admins and staff go to /login; customers go to the landing page.
-    // If role is null (e.g. force-logout during OTP verification before full auth)
-    // we fall back to "/login" so the admin/staff user is never silently dumped at "/".
-    const isCustomer = user.role === "CUSTOMER";
-    const destination = redirectTo ?? (isCustomer ? "/" : "/login");
+    // Only privileged roles (Admin / Staff) go to /login on logout.
+    // Customers, guests, and unauthenticated sessions always default to "/".
+    const isPrivileged = user.role === "SUPER_ADMIN" || user.role === "ADMIN" || user.role === "STAFF";
+    const destination = redirectTo ?? (isPrivileged ? "/login" : "/");
 
     try {
       await api.post("/auth/logout", {}, { withCredentials: true });
@@ -146,9 +156,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     if (socket.connected) socket.disconnect();
 
+    // Preserve public site branding, templates, themes, SEO, and tracking caches across logouts
+    const preservedKeys = [
+      "crm_navbar_cache",
+      "crm_branding_cache",
+      "crm_seo_cache",
+      "crm_theme_cache",
+      "crm_hero_cache",
+      "CACHED_TRACKING_CONFIG",
+      "storra_theme_tokens",
+    ];
+    const preservedData: Record<string, string> = {};
+    preservedKeys.forEach((key) => {
+      const val = localStorage.getItem(key);
+      if (val !== null) preservedData[key] = val;
+    });
+
     // Clear all client-side storage
     localStorage.clear();
     sessionStorage.clear();
+
+    // Restore preserved store layout & template configs immediately
+    Object.entries(preservedData).forEach(([key, val]) => {
+      localStorage.setItem(key, val);
+    });
 
     setUser({ role: null, isAuthenticated: false, isInitialLoad: false });
     window.location.href = destination;
@@ -198,8 +229,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // refresh-token-mismatch cascade → force-logout.
         if (res.data.isLoggedIn) {
           localStorage.setItem("isLoggedIn", "true");
+          if (res.data.role) {
+            localStorage.setItem("userRole", res.data.role);
+          }
           setUser({
-            role: res.data.role ?? null,
+            role: res.data.role ?? localStorage.getItem("userRole") ?? null,
             isAuthenticated: true,
             isInitialLoad: false,
           });

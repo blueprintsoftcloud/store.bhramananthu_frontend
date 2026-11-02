@@ -58,13 +58,16 @@ import {
   RotateCcw,
   X,
   Image as ImageIcon,
+  Layers,
+  Bold,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../context/AuthContext";
 import { useStaffPermissions } from "../context/StaffPermissionContext";
 import { normalizeProduct, calculateDiscountedPrice, calculateDiscountAmount } from "../utils/product";
+import { normalizeCategory } from "../utils/category";
 import { compressImage } from "../utils/compressImage";
-import { PulseLoader } from "react-spinners";
+import { formatProductDescription, convertClipboardHtmlToText } from "../utils/sanitizeHtml";
 import AttributeFilterPanel from "../components/AttributeFilterPanel";
 import ProductVariantsModal from "./ProductVariantsModal";
 import VariantsManagerFields, { VariantsManagerFieldsHandle } from "./VariantsManagerFields";
@@ -1038,8 +1041,8 @@ const Listproducts = ({
             return {
               ...prev,
               price: String(cheapest.priceOverride ?? currentPrice),
-              purchasePrice: cheapest.purchasePriceOverride != null ? String(cheapest.purchasePriceOverride) : prev.purchasePrice,
-              discount: cheapest.discountOverride != null ? String(cheapest.discountOverride) : prev.discount,
+              purchasePrice: cheapest.purchasePriceOverride != null ? String(cheapest.purchasePriceOverride) : (prev.purchasePrice || "0"),
+              discount: cheapest.discountOverride != null ? String(cheapest.discountOverride) : "0",
             };
           });
         }
@@ -1142,6 +1145,83 @@ const Listproducts = ({
     setShowDeleteModal(true);
   };
 
+  const editDescriptionTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const applyBoldToEditDescription = () => {
+    const textarea = editDescriptionTextareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const currentText = formData.description;
+
+    let newText = "";
+    let newCursorPos = 0;
+
+    if (start !== end) {
+      const selected = currentText.substring(start, end);
+      if (selected.startsWith("<b>") && selected.endsWith("</b>")) {
+        const unwrapped = selected.slice(3, -4);
+        newText = currentText.substring(0, start) + unwrapped + currentText.substring(end);
+        newCursorPos = start + unwrapped.length;
+      } else if (selected.startsWith("**") && selected.endsWith("**")) {
+        const unwrapped = selected.slice(2, -2);
+        newText = currentText.substring(0, start) + unwrapped + currentText.substring(end);
+        newCursorPos = start + unwrapped.length;
+      } else {
+        const wrapped = `<b>${selected}</b>`;
+        newText = currentText.substring(0, start) + wrapped + currentText.substring(end);
+        newCursorPos = start + wrapped.length;
+      }
+    } else {
+      const insertion = "<b>bold text</b>";
+      newText = currentText.substring(0, start) + insertion + currentText.substring(end);
+      newCursorPos = start + insertion.length;
+    }
+
+    setFormData((prev) => ({ ...prev, description: newText }));
+
+    setTimeout(() => {
+      if (editDescriptionTextareaRef.current) {
+        editDescriptionTextareaRef.current.focus();
+        editDescriptionTextareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 0);
+  };
+
+  const handleEditDescriptionKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === "b" || e.key === "B")) {
+      e.preventDefault();
+      applyBoldToEditDescription();
+    }
+  };
+
+  const handleEditDescriptionPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const clipboardHtml = e.clipboardData.getData("text/html");
+    const clipboardPlain = e.clipboardData.getData("text/plain");
+
+    if (!clipboardHtml && !clipboardPlain) return;
+
+    const formatted = convertClipboardHtmlToText(clipboardHtml, clipboardPlain);
+
+    e.preventDefault();
+    const textarea = e.currentTarget;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const currentText = formData.description;
+
+    const newText = currentText.substring(0, start) + formatted + currentText.substring(end);
+    const newCursorPos = start + formatted.length;
+
+    setFormData((prev) => ({ ...prev, description: newText }));
+
+    setTimeout(() => {
+      if (editDescriptionTextareaRef.current) {
+        editDescriptionTextareaRef.current.focus();
+        editDescriptionTextareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 0);
+  };
+
   const handleChange = async (
     e: React.ChangeEvent<
       HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
@@ -1242,6 +1322,7 @@ const Listproducts = ({
       !hasVariantEdits &&
       formData.productCode === (selectedProduct.code ?? "") &&
       formData.productName === selectedProduct.name &&
+      formData.brand === (selectedProduct.brand ?? "") &&
       formData.price === selectedProduct.price &&
       formData.description === selectedProduct.description &&
       formData.metaTitle === (selectedProduct.metaTitle ?? "") &&
@@ -1265,6 +1346,19 @@ const Listproducts = ({
       return;
     }
 
+    // Strict requirement: every active variant must have a primary image (Slot 1)
+    const missingImages = variantsManagerRef.current?.getVariantsMissingImage() ?? [];
+    if (missingImages.length > 0) {
+      setEditSectionTab("variants");
+      const names = missingImages.slice(0, 2).map((m) => m.label).join(", ");
+      const more = missingImages.length > 2 ? ` (+${missingImages.length - 2} more)` : "";
+      toast.error(
+        `1st image is required for all active variants. Missing: ${names}${more}`,
+        { id: "variant-missing-image-update", duration: 5000 },
+      );
+      return;
+    }
+
     // Every active variant still unpriced (never touched, not just one row among priced
     // siblings) means proceeding would silently put the whole product live at ₹0 — confirm
     // first instead of saving that outright, same guard as ProductVariantsModal.tsx.
@@ -1279,6 +1373,18 @@ const Listproducts = ({
 
   const proceedUpdate = async () => {
     if (!selectedProduct) return;
+    const missingImages = variantsManagerRef.current?.getVariantsMissingImage() ?? [];
+    if (missingImages.length > 0) {
+      setEditSectionTab("variants");
+      const names = missingImages.slice(0, 2).map((m) => m.label).join(", ");
+      const more = missingImages.length > 2 ? ` (+${missingImages.length - 2} more)` : "";
+      toast.error(
+        `1st image is required for all active variants. Missing: ${names}${more}`,
+        { id: "variant-missing-image-update", duration: 5000 },
+      );
+      return;
+    }
+
     const hasVariantEdits = variantsManagerRef.current?.hasPendingEdits() ?? false;
     const productId = selectedProduct._id ?? selectedProduct.id;
     if (!productId) {
@@ -2727,6 +2833,7 @@ const Listproducts = ({
                         }}
                         basePrice={selectedProduct.price ?? null}
                         basePurchasePrice={selectedProduct.purchasePrice ?? null}
+                        productImages={[selectedProduct.image, ...(selectedProduct.images ?? [])].filter(Boolean) as string[]}
                       />
                     )}
                   </div>
@@ -2734,6 +2841,8 @@ const Listproducts = ({
 
                   {editSectionTab === "images" && (
                     <div className="space-y-6">
+
+
                       {/* PRIMARY IMAGE */}
                       <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
                         <div className="flex items-center justify-between">
@@ -2863,10 +2972,27 @@ const Listproducts = ({
                           onChange={handleChange}
                           className="hidden"
                         />
+
+                        {editingVariantsList.length > 0 && (
+                          <div className="flex items-center gap-2 p-3 rounded-xl bg-indigo-50 border border-indigo-100 text-xs text-slate-700 mt-2">
+                            <Layers className="h-4 w-4 text-indigo-600 shrink-0" />
+                            <span>
+                              This product has {editingVariantsList.length} options — photos for each variant are managed directly in the{" "}
+                              <button
+                                type="button"
+                                onClick={() => setEditSectionTab("variants")}
+                                className="font-bold text-indigo-700 underline hover:text-indigo-900 cursor-pointer"
+                              >
+                                Variants tab
+                              </button>.
+                            </span>
+                          </div>
+                        )}
                       </div>
 
-                      {/* GALLERY IMAGES */}
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
+                      {/* GALLERY IMAGES - Only shown for single-SKU products without variants */}
+                      {editingVariantsList.length === 0 && (
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
                         <div className="flex items-center justify-between">
                           <div>
                             <label className="block text-sm font-bold text-slate-800">
@@ -3017,7 +3143,8 @@ const Listproducts = ({
                             </button>
                           </div>
                         )}
-                      </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -3025,15 +3152,32 @@ const Listproducts = ({
 
                   {/* Description */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Description
-                    </label>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <label className="block text-sm font-medium text-slate-700">
+                          Description
+                        </label>
+                        <button
+                          type="button"
+                          onClick={applyBoldToEditDescription}
+                          title="Bold (Ctrl+B) - Select text to bold"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded transition-colors shadow-xs cursor-pointer"
+                        >
+                          <Bold className="w-3 h-3" />
+                          <span>Bold</span>
+                        </button>
+                      </div>
+                    </div>
                     <textarea
+                      ref={editDescriptionTextareaRef}
                       name="description"
                       value={formData.description}
                       onChange={handleChange}
+                      onKeyDown={handleEditDescriptionKeyDown}
+                      onPaste={handleEditDescriptionPaste}
                       rows={4}
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/50 resize-none"
+                      placeholder="Describe this product in detail... (Select text and click Bold, paste rich text, or use **word** / <b>word</b>)"
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/50 resize-y focus:bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
                     />
                   </div>
 
@@ -3326,9 +3470,10 @@ const Listproducts = ({
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">
                       Description
                     </p>
-                    <p className="text-sm text-slate-600 whitespace-pre-wrap break-words">
-                      {detailProduct.description || "No description available"}
-                    </p>
+                    <div 
+                      className="text-sm text-slate-700 leading-relaxed whitespace-pre-line space-y-2 [&_b]:font-bold [&_b]:text-slate-900 [&_strong]:font-bold [&_strong]:text-slate-900"
+                      dangerouslySetInnerHTML={{ __html: formatProductDescription(detailProduct.description) }}
+                    />
                   </div>
                 </div>
               </div>

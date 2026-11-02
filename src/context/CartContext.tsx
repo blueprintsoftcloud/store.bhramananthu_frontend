@@ -130,7 +130,6 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   }, [queryError, setLoading]);
 
   const fetchCart = useCallback(async () => {
-    setLoading(true);
     try {
       await refetch();
     } finally {
@@ -186,6 +185,10 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         await refetch();
       } catch {
         // refetch failure is non-critical; query will self-heal
+      }
+      // Meta Pixel: Track AddToCart
+      if (typeof window !== "undefined" && window.fbq) {
+        window.fbq("track", "AddToCart");
       }
       return result;
     },

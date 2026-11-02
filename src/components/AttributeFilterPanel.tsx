@@ -26,7 +26,7 @@
 //     there's more than one or two attributes). INSTANT — applies on every click, no
 //     button, since an admin quick-filtering the catalog wants immediate feedback.
 
-import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { Popover } from "@headlessui/react";
 import { ChevronDown } from "lucide-react";
 import api from "../utils/api";
@@ -34,14 +34,14 @@ import type { AttributeType } from "../constants/attributeTypes";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface FilterValue {
+export interface FilterValue {
   value: string;
   /** One displayed value can map to several underlying CategoryAttributeValue ids —
    * e.g. the same "Red" defined independently on two sibling leaf categories. */
   ids: string[];
 }
 
-interface FilterAttribute {
+export interface FilterAttribute {
   name: string;
   type: AttributeType;
   values: FilterValue[];
@@ -52,7 +52,8 @@ export interface ActiveFilters {
 }
 
 interface Props {
-  categoryId: string;
+  categoryId?: string;
+  attributes?: FilterAttribute[];
   onFiltersChange: (filters: ActiveFilters) => void;
   resetKey?: number; // increment to reset all selections
   layout?: "sidebar" | "toolbar";
@@ -64,207 +65,261 @@ export interface AttributeFilterPanelHandle {
   applyNow: () => void;
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+const COLOR_MAP: Record<string, string> = {
+  black: "#000000",
+  white: "#FFFFFF",
+  blue: "#2563EB",
+  "navy blue": "#1E3A8A",
+  navy: "#1E3A8A",
+  red: "#DC2626",
+  green: "#16A34A",
+  grey: "#9CA3AF",
+  gray: "#9CA3AF",
+  yellow: "#EAB308",
+  beige: "#E5E0D8",
+  brown: "#78350F",
+  pink: "#EC4899",
+  orange: "#EA580C",
+  purple: "#9333EA",
+  maroon: "#831843",
+  teal: "#0D9488",
+  olive: "#65A30D",
+  gold: "#CA8A04",
+  silver: "#D1D5DB",
+  cream: "#FFFBEB",
+  mustard: "#D97706",
+  charcoal: "#374151",
+  coral: "#F43F5E",
+  burgundy: "#881337",
+  khaki: "#A3A375",
+  tan: "#D2B48C",
+};
 
 const keyOf = (attr: FilterAttribute, value: string) => `${attr.type}::${attr.name}::${value}`;
 
-const AttributeFilterPanel = forwardRef<AttributeFilterPanelHandle, Props>(({ categoryId, onFiltersChange, resetKey, layout = "sidebar" }, ref) => {
-  const [attributes, setAttributes] = useState<FilterAttribute[]>([]);
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-  // Track last emitted value to avoid calling onFiltersChange with identical data
-  const lastEmittedRef = useRef<string>("");
+// ─── Individual Attribute Section in Sidebar ──────────────────────────────────
+const SidebarAttributeSection = ({
+  attr,
+  selectedKeys,
+  onToggle,
+  onPickSingle,
+}: {
+  attr: FilterAttribute;
+  selectedKeys: Set<string>;
+  onToggle: (key: string) => void;
+  onPickSingle: (attr: FilterAttribute, key: string) => void;
+}) => {
+  const [expanded, setExpanded] = useState(false);
 
-  // Reset internal state when resetKey changes (parent clicked "Clear")
-  useEffect(() => {
-    if (resetKey === undefined) return;
-    setSelectedKeys(new Set());
-  }, [resetKey]);
+  const isColor =
+    attr.name.toLowerCase().includes("color") || attr.name.toLowerCase().includes("colour");
 
-  // Fetch filterable attributes for this category's subtree
-  useEffect(() => {
-    if (!categoryId) return;
-    setSelectedKeys(new Set());
+  const displayedValues = expanded ? attr.values : attr.values.slice(0, 6);
+  const remainingCount = attr.values.length - 6;
 
-    api
-      .get(`/user/shop/categories/${categoryId}/filters`)
-      .then((res) => setAttributes(res.data.attributes ?? []))
-      .catch(() => setAttributes([]));
-  }, [categoryId]);
+  return (
+    <div className="pt-4 pb-4 border-b border-gray-200">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs font-bold text-gray-900 uppercase tracking-wider">
+          {attr.name}
+        </span>
+      </div>
 
-  const computeIds = () =>
-    attributes
-      .flatMap((attr) => attr.values.filter((v) => selectedKeys.has(keyOf(attr, v.value))).flatMap((v) => v.ids))
-      .sort();
+      <div className="space-y-1.5">
+        {displayedValues.map((v) => {
+          const key = keyOf(attr, v.value);
+          const checked = selectedKeys.has(key);
+          const colorHex = isColor
+            ? COLOR_MAP[v.value.toLowerCase()] || v.value.toLowerCase()
+            : null;
 
-  // Toolbar mode only: propagate on every change, instantly. Sidebar mode stages the
-  // selection instead — see applyNow, wired to the "Apply Filter" button below.
-  useEffect(() => {
-    if (layout !== "toolbar") return;
-    const ids = computeIds();
-    const key = ids.join(",");
-    if (key === lastEmittedRef.current) return; // nothing changed
-    lastEmittedRef.current = key;
-    onFiltersChange({ attributeValueIds: ids });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedKeys, attributes, layout]);
-
-  const applyNow = () => {
-    const ids = computeIds();
-    lastEmittedRef.current = ids.join(",");
-    onFiltersChange({ attributeValueIds: ids });
-  };
-
-  useImperativeHandle(ref, () => ({ applyNow }));
-
-  if (attributes.length === 0) return null;
-
-  const toggleKey = (key: string) => {
-    setSelectedKeys((prev) => {
-      const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
-      return next;
-    });
-  };
-
-  // Single-pick semantics (SELECT/BOOLEAN both use this): deselect every other value
-  // under the same attribute, then select this one (or clear it if re-clicked).
-  const pickSingle = (attr: FilterAttribute, key: string) => {
-    const isActive = selectedKeys.has(key);
-    const next = new Set(
-      Array.from(selectedKeys).filter((k) => !attr.values.some((av) => keyOf(attr, av.value) === k)),
-    );
-    if (!isActive) next.add(key);
-    setSelectedKeys(next);
-  };
-
-  const selectedCountOf = (attr: FilterAttribute) =>
-    attr.values.filter((v) => selectedKeys.has(keyOf(attr, v.value))).length;
-
-  const selectedLabelOf = (attr: FilterAttribute) => {
-    const selected = attr.values.filter((v) => selectedKeys.has(keyOf(attr, v.value)));
-    if (selected.length === 0) return attr.name;
-    if (selected.length === 1) return `${attr.name}: ${selected[0].value}`;
-    return `${attr.name} (${selected.length})`;
-  };
-
-  // The interactive control for one attribute — identical markup regardless of which
-  // layout it's mounted in, just a different container around it.
-  const renderControl = (attr: FilterAttribute) => (
-    <>
-      {attr.type === "SELECT" && (
-        <div className="space-y-2">
-          {attr.values.map((v) => {
-            const key = keyOf(attr, v.value);
-            return (
-              <label key={key} className="flex items-center gap-3 cursor-pointer group">
-                <input
-                  type="radio"
-                  name={`attr-${attr.type}-${attr.name}`}
-                  checked={selectedKeys.has(key)}
-                  onChange={() => pickSingle(attr, key)}
-                  className="w-4 h-4 text-gray-900 border-gray-300 focus:ring-gray-900"
-                />
-                <span className="text-sm text-gray-600 group-hover:text-gray-900 transition-colors">
-                  {v.value}
-                </span>
-              </label>
-            );
-          })}
-        </div>
-      )}
-
-      {attr.type === "MULTISELECT" && (
-        <div className="flex flex-wrap gap-2">
-          {attr.values.map((v) => {
-            const key = keyOf(attr, v.value);
-            const active = selectedKeys.has(key);
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => toggleKey(key)}
-                className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
-                  active
-                    ? "bg-gray-900 text-white border-gray-900"
-                    : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
-                }`}
-              >
-                {v.value}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* BOOLEAN — same single-pick semantics as SELECT, styled as a compact
-          pill pair. Backed by real CategoryAttributeValue rows the backend seeds
-          automatically (see attribute.controller.ts's seedBooleanValues), so this
-          maps over attr.values directly instead of guessing at "true"/"false". */}
-      {attr.type === "BOOLEAN" && (
-        <div className="flex gap-3">
-          {attr.values.map((v) => {
-            const key = keyOf(attr, v.value);
-            const active = selectedKeys.has(key);
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => pickSingle(attr, key)}
-                className={`px-4 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                  active
-                    ? "bg-gray-900 text-white border-gray-900"
-                    : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
-                }`}
-              >
-                {v.value}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </>
-  );
-
-  if (layout === "toolbar") {
-    return (
-      <div className="flex flex-wrap items-center gap-2">
-        {attributes.map((attr) => {
-          const count = selectedCountOf(attr);
           return (
-            <Popover key={`${attr.type}::${attr.name}`} className="relative">
-              <Popover.Button
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer focus:outline-none ${
-                  count > 0
-                    ? "bg-slate-900 text-white shadow-xs"
-                    : "bg-slate-100/80 text-slate-600 hover:bg-slate-200/80"
-                }`}
-              >
-                <span className="truncate max-w-40">{selectedLabelOf(attr)}</span>
-                <ChevronDown className="h-3 w-3 shrink-0" />
-              </Popover.Button>
-              <Popover.Panel className="absolute left-0 top-full z-30 mt-2 w-56 max-h-72 overflow-y-auto rounded-2xl border border-gray-100 bg-white p-3 shadow-xl ring-1 ring-black/5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                {renderControl(attr)}
-              </Popover.Panel>
-            </Popover>
+            <label
+              key={key}
+              className="flex items-center gap-2.5 py-0.5 cursor-pointer group select-none"
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => {
+                  if (attr.type === "SELECT" || attr.type === "BOOLEAN") {
+                    onPickSingle(attr, key);
+                  } else {
+                    onToggle(key);
+                  }
+                }}
+                className="w-3.5 h-3.5 rounded-[2px] border-gray-300 text-black accent-black focus:ring-0 focus:ring-offset-0 cursor-pointer"
+              />
+              {isColor && colorHex && (
+                <span
+                  className="w-3.5 h-3.5 rounded-full shrink-0 border border-gray-300/80 shadow-2xs"
+                  style={{ backgroundColor: colorHex }}
+                />
+              )}
+              <span className="text-xs text-gray-800 group-hover:text-black font-normal transition-colors">
+                {v.value}
+              </span>
+            </label>
           );
         })}
       </div>
-    );
-  }
 
-  return (
-    <div className="space-y-6 pt-4 border-t border-gray-200">
-      {attributes.map((attr) => (
-        <div key={`${attr.type}::${attr.name}`}>
-          <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-3">
-            {attr.name}
-          </h4>
-          {renderControl(attr)}
-        </div>
-      ))}
+      {remainingCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          className="mt-2 text-xs font-semibold text-black hover:underline cursor-pointer transition-colors block"
+        >
+          {expanded ? "Show less" : `+ ${remainingCount} more`}
+        </button>
+      )}
     </div>
   );
-});
+};
+
+// ─── Component ────────────────────────────────────────────────────────────────
+const AttributeFilterPanel = forwardRef<AttributeFilterPanelHandle, Props>(
+  ({ categoryId, attributes: propsAttributes, onFiltersChange, resetKey, layout = "sidebar" }, ref) => {
+    const [attributes, setAttributes] = useState<FilterAttribute[]>(propsAttributes ?? []);
+    const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+    const lastEmittedRef = useRef<string>("");
+
+    // Sync with parent-provided attributes if passed directly
+    useEffect(() => {
+      if (propsAttributes !== undefined) {
+        setAttributes(propsAttributes);
+      }
+    }, [propsAttributes]);
+
+    // Reset internal state when resetKey changes (parent clicked "Clear")
+    useEffect(() => {
+      if (resetKey === undefined) return;
+      setSelectedKeys(new Set());
+    }, [resetKey]);
+
+    // Fetch filterable attributes for this category's subtree if not passed as prop
+    useEffect(() => {
+      if (propsAttributes !== undefined || !categoryId) return;
+      setSelectedKeys(new Set());
+
+      api
+        .get(`/user/shop/categories/${categoryId}/filters`)
+        .then((res) => setAttributes(res.data.attributes ?? []))
+        .catch(() => setAttributes([]));
+    }, [categoryId, propsAttributes]);
+
+    const computeIds = () =>
+      attributes
+        .flatMap((attr) =>
+          attr.values.filter((v) => selectedKeys.has(keyOf(attr, v.value))).flatMap((v) => v.ids)
+        )
+        .sort();
+
+    // Toolbar mode only
+    useEffect(() => {
+      if (layout !== "toolbar") return;
+      const ids = computeIds();
+      const key = ids.join(",");
+      if (key === lastEmittedRef.current) return;
+      lastEmittedRef.current = key;
+      onFiltersChange({ attributeValueIds: ids });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedKeys, attributes, layout]);
+
+    const applyNow = () => {
+      const ids = computeIds();
+      lastEmittedRef.current = ids.join(",");
+      onFiltersChange({ attributeValueIds: ids });
+    };
+
+    useImperativeHandle(ref, () => ({ applyNow }));
+
+    if (attributes.length === 0) return null;
+
+    const toggleKey = (key: string) => {
+      setSelectedKeys((prev) => {
+        const next = new Set(prev);
+        next.has(key) ? next.delete(key) : next.add(key);
+        return next;
+      });
+    };
+
+    const pickSingle = (attr: FilterAttribute, key: string) => {
+      const isActive = selectedKeys.has(key);
+      const next = new Set(
+        Array.from(selectedKeys).filter((k) => !attr.values.some((av) => keyOf(attr, av.value) === k))
+      );
+      if (!isActive) next.add(key);
+      setSelectedKeys(next);
+    };
+
+    const selectedCountOf = (attr: FilterAttribute) =>
+      attr.values.filter((v) => selectedKeys.has(keyOf(attr, v.value))).length;
+
+    const selectedLabelOf = (attr: FilterAttribute) => {
+      const selected = attr.values.filter((v) => selectedKeys.has(keyOf(attr, v.value)));
+      if (selected.length === 0) return attr.name;
+      if (selected.length === 1) return `${attr.name}: ${selected[0].value}`;
+      return `${attr.name} (${selected.length})`;
+    };
+
+    if (layout === "toolbar") {
+      return (
+        <div className="flex flex-wrap items-center gap-2">
+          {attributes.map((attr) => {
+            const count = selectedCountOf(attr);
+            return (
+              <Popover key={`${attr.type}::${attr.name}`} className="relative">
+                <Popover.Button
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer focus:outline-none ${
+                    count > 0
+                      ? "bg-slate-900 text-white shadow-xs"
+                      : "bg-slate-100/80 text-slate-600 hover:bg-slate-200/80"
+                  }`}
+                >
+                  <span className="truncate max-w-40">{selectedLabelOf(attr)}</span>
+                  <ChevronDown className="h-3 w-3 shrink-0" />
+                </Popover.Button>
+                <Popover.Panel className="absolute left-0 top-full z-30 mt-2 w-56 max-h-72 overflow-y-auto rounded-2xl border border-gray-100 bg-white p-3 shadow-xl ring-1 ring-black/5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                  <div className="space-y-1.5">
+                    {attr.values.map((v) => {
+                      const key = keyOf(attr, v.value);
+                      return (
+                        <label key={key} className="flex items-center gap-2 py-1 text-xs text-gray-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={selectedKeys.has(key)}
+                            onChange={() => toggleKey(key)}
+                            className="w-3.5 h-3.5 rounded-[2px] border-gray-300 text-black accent-black"
+                          />
+                          <span>{v.value}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </Popover.Panel>
+              </Popover>
+            );
+          })}
+        </div>
+      );
+    }
+
+    return (
+      <div className="divide-y divide-transparent">
+        {attributes.map((attr) => (
+          <SidebarAttributeSection
+            key={`${attr.type}::${attr.name}`}
+            attr={attr}
+            selectedKeys={selectedKeys}
+            onToggle={toggleKey}
+            onPickSingle={pickSingle}
+          />
+        ))}
+      </div>
+    );
+  }
+);
 
 AttributeFilterPanel.displayName = "AttributeFilterPanel";
 

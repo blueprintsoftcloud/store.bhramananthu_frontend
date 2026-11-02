@@ -1,10 +1,20 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence, Variants } from "framer-motion";
-import { Trash2, ShoppingBag, X, ArrowLeft } from "lucide-react";
+import {
+  Trash2,
+  ShoppingBag,
+  ArrowLeft,
+  ArrowRight,
+  Heart,
+  Check,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
 import { useWishlist } from "../context/WishlistContext";
-import toast, { Toaster } from "react-hot-toast";
-import FooterSection from "../components/FooterSection";
+import { useCart } from "../context/CartContext";
+import toast from "react-hot-toast";
 import { domainUrl } from "../utils/constant";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
@@ -17,6 +27,7 @@ interface WishlistProduct {
   brand?: string;
   price?: number;
   image?: string;
+  stock?: number;
   variantId?: string | null;
   variantOptions?: Record<string, string> | null;
 }
@@ -32,85 +43,88 @@ interface WishlistProductCardProps {
   cardVariants: Variants;
 }
 
-// --- CUSTOM MODAL COMPONENT ---
+// ── CUSTOM CONFIRMATION MODAL ─────────────────────────────────────────────────
 const ConfirmationModal = ({
   isOpen,
   onClose,
   onConfirm,
 }: ConfirmationModalProps) => {
   useBodyScrollLock(isOpen);
-  if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <>
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 transition-opacity"
+            className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs cursor-pointer"
           />
 
           {/* Modal Content */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            initial={{ opacity: 0, scale: 0.95, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none"
+            exit={{ opacity: 0, scale: 0.95, y: 12 }}
+            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            className="relative z-10 bg-white rounded-3xl shadow-2xl p-6 sm:p-8 w-full max-w-sm border border-[#E6DFD5] text-center"
           >
-            <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm mx-4 pointer-events-auto border border-gray-100">
-              <div className="text-center">
-                <div className="mx-auto w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mb-4">
-                  <Trash2 className="w-6 h-6 text-red-500" />
-                </div>
-                <h3 className="text-lg font-bold text-gray-900 mb-2">
-                  Clear Wishlist?
-                </h3>
-                <p className="text-sm text-gray-500 mb-6">
-                  Are you sure you want to remove all items from your wishlist?
-                  This action cannot be undone.
-                </p>
-                <div className="flex gap-3 justify-center">
-                  <button
-                    onClick={onClose}
-                    className="px-5 py-2.5 rounded-xl text-sm font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={onConfirm}
-                    className="px-5 py-2.5 rounded-xl text-sm font-medium text-white bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/30 transition-all transform hover:scale-105"
-                  >
-                    Yes, Clear All
-                  </button>
-                </div>
-              </div>
+            <div className="w-14 h-14 bg-red-50 border border-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <h3 className="font-serif text-2xl font-bold text-[#172B2A] mb-2">
+              Clear Wishlist?
+            </h3>
+            <p className="text-sm text-[#4A5554] mb-6 leading-relaxed">
+              Are you sure you want to remove all items from your wishlist? This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-center">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 px-5 py-2.5 rounded-xl text-sm font-bold text-[#172B2A] bg-[#FAF8F2] hover:bg-[#F1E9DA] border border-[#E6DFD5] transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={onConfirm}
+                className="flex-1 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-red-600 hover:bg-red-700 shadow-sm shadow-red-600/20 transition-all cursor-pointer"
+              >
+                Yes, Clear All
+              </button>
             </div>
           </motion.div>
-        </>
+        </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 };
 
-// --- Component: WishlistProductCard ---
+// ── WISHLIST PRODUCT CARD (MODERN FLOATING GLASS STYLE) ───────────────────────
 const WishlistProductCard = ({
   product,
   cardVariants,
 }: WishlistProductCardProps) => {
   const { toggleWishlist } = useWishlist();
-  const productId = product?.id ?? product?._id;
+  const { addToCart, cartItems } = useCart();
+  const [isAdding, setIsAdding] = useState(false);
 
+  const productId = product?.id ?? product?._id;
   if (!product || !productId) return null;
+
   const name = product?.name || "Product Name Missing";
   const formattedPrice =
     product?.price != null
       ? new Intl.NumberFormat("en-IN", {
           style: "currency",
           currency: "INR",
+          maximumFractionDigits: 0,
         }).format(product.price)
       : "N/A";
 
@@ -118,7 +132,17 @@ const WishlistProductCard = ({
     ? product.image.startsWith("http")
       ? product.image
       : `${BACKEND_BASE_URL}/${product.image}`
-    : "https://placehold.co/300x400/F3F4F6/9CA3AF?text=No+Image";
+    : "https://placehold.co/400x500/FAF8F2/34504D?text=No+Image";
+
+  // Check if item is already in cart (matching both productId and variantId)
+  const isInCart = cartItems.some((item) => {
+    const isSameProduct = String(item.productId) === String(productId);
+    const isSameVariant = String(item.variantId ?? "") === String(product.variantId ?? "");
+    return isSameProduct && isSameVariant;
+  });
+
+  const stock = typeof product.stock === "number" ? product.stock : 10;
+  const isOutOfStock = stock <= 0;
 
   const handleRemove = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -126,73 +150,184 @@ const WishlistProductCard = ({
 
     const success = await toggleWishlist(productId, product.variantId);
     if (success) {
-      toast.success(`${name} removed`, { id: "item removed" });
+      toast.success(`${name} removed from wishlist`, {
+        id: "wishlist-item-removed",
+      });
     } else {
-      toast.error("Could not remove item", { id: "could not item removed" });
+      toast.error("Could not remove item", { id: "wishlist-remove-failed" });
     }
   };
 
-  return (
-    <motion.div variants={cardVariants} className="group cursor-pointer">
-      <Link
-        to={product.variantId ? `/products/${productId}?variantId=${product.variantId}` : `/products/${productId}`}
-        className="block"
-      >
-        {/* Image Container */}
-        <div className="relative w-full aspect-[3/4] overflow-hidden rounded-2xl bg-gray-100 shadow-sm transition-all duration-500 group-hover:shadow-xl">
-          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300 z-10" />
+  const handleAddToCart = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
 
+    if (isInCart) {
+      toast.error("This item is already in your cart", { id: "wishlist-already-in-cart" });
+      return;
+    }
+
+    if (isOutOfStock) {
+      toast.error("This item is currently out of stock", { id: "wishlist-out-of-stock" });
+      return;
+    }
+
+    setIsAdding(true);
+    try {
+      await addToCart(productId, {
+        quantity: 1,
+        variantId: product.variantId ?? undefined,
+      });
+      toast.success(`Added ${name} to cart`, {
+        id: "wishlist-added-cart",
+      });
+    } catch (err: any) {
+      if (err?.message !== "Not authenticated") {
+        toast.error(err?.response?.data?.message || "Failed to add to cart");
+      }
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
+  const productUrl = product.variantId
+    ? `/products/${productId}?variantId=${product.variantId}`
+    : `/products/${productId}`;
+
+  return (
+    <motion.div
+      variants={cardVariants}
+      className="group relative flex flex-col w-full overflow-hidden rounded-2xl sm:rounded-3xl bg-white border border-[#E6DFD5] shadow-xs hover:shadow-xl hover:-translate-y-1 transition-all duration-300 ease-out select-none"
+    >
+      {/* Product Image Area */}
+      <div className="relative aspect-[4/3] sm:aspect-square w-full bg-[#FAF8F2] overflow-hidden border-b border-[#E6DFD5]/60 flex items-center justify-center">
+        <Link to={productUrl} className="w-full h-full flex items-center justify-center p-4 sm:p-5">
           <img
             src={imageUrl}
             alt={name}
-            className="h-full w-full object-cover object-center transform transition-transform duration-700 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] group-hover:scale-110"
+            loading="lazy"
+            decoding="async"
+            className="h-full w-full object-contain transition-transform duration-500 ease-out transform-gpu group-hover:scale-105"
           />
+        </Link>
 
-          {/* Floating Remove Button */}
-          <div className="absolute top-3 right-3 z-20 opacity-0 transform translate-y-4 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
+        {/* Floating Top Left: Out of Stock Badge */}
+        {isOutOfStock && (
+          <div className="absolute top-3 left-3 z-20 inline-flex items-center gap-1 bg-rose-600/90 text-white text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md shadow-xs">
+            <AlertCircle className="w-3 h-3" />
+            <span>Out of stock</span>
+          </div>
+        )}
+      </div>
+
+      {/* Product Details Section (Placed cleanly below image) */}
+      <div className="p-4 sm:p-5 flex flex-col justify-between flex-1 gap-4 bg-white">
+        <div>
+          <Link to={productUrl} className="block group/link">
+            <h3 className="text-sm sm:text-base font-bold text-[#172B2A] group-hover/link:text-[#0B6B6B] transition-colors leading-snug line-clamp-2">
+              {name}
+            </h3>
+
+            {product.variantOptions && Object.keys(product.variantOptions).length > 0 ? (
+              <span className="truncate text-xs font-medium text-[#4A5554] block mt-1">
+                {Object.entries(product.variantOptions)
+                  .map(([axis, value]) => `${axis}: ${value}`)
+                  .join(" · ")}
+              </span>
+            ) : (
+              <span className="text-xs font-medium text-[#4A5554] block mt-1">
+                Ayurvedic Formulation
+              </span>
+            )}
+          </Link>
+        </div>
+
+        {/* Price & Action Row with Delete Button at Bottom */}
+        <div className="flex items-center justify-between gap-2 pt-3 border-t border-[#F1E9DA]">
+          <span className="font-serif font-extrabold text-[#172B2A] text-base sm:text-lg">
+            {formattedPrice}
+          </span>
+
+          {/* Action Buttons Group */}
+          <div className="flex items-center gap-2">
+            {/* Delete / Trash Button at bottom */}
             <button
+              type="button"
               onClick={handleRemove}
-              className="bg-white/90 backdrop-blur-sm p-2.5 rounded-full shadow-lg hover:bg-red-50 transition-colors group/btn"
+              className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#FAF8F2] text-[#4A5554] border border-[#E6DFD5] hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-all active:scale-95 cursor-pointer group/btn shrink-0"
               title="Remove from Wishlist"
+              aria-label={`Remove ${name} from Wishlist`}
             >
-              <Trash2 className="w-4 h-4 text-gray-900 group-hover/btn:text-red-600" />
+              <Trash2 className="w-4 h-4 transition-transform group-hover/btn:scale-110" />
             </button>
+
+            {isInCart ? (
+              <div
+                className="flex h-9 px-3 items-center justify-center gap-1.5 rounded-xl bg-[#DDEDEA] text-[#0B6B6B] border border-[#D0E5E0] text-xs font-bold select-none"
+                title="Already in cart"
+              >
+                <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>In Cart</span>
+              </div>
+            ) : isOutOfStock ? (
+              <div
+                className="flex h-9 px-3 items-center justify-center rounded-xl bg-gray-100 text-gray-400 text-xs font-bold border border-gray-200 select-none cursor-not-allowed"
+              >
+                <span>Sold Out</span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleAddToCart}
+                disabled={isAdding}
+                className="flex h-9 px-3.5 items-center justify-center gap-1.5 rounded-xl bg-[#0B6B6B] hover:bg-[#084F4F] active:scale-95 text-white text-xs font-bold transition-all shadow-xs cursor-pointer disabled:opacity-75"
+                title="Add to Cart"
+              >
+                {isAdding ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <ShoppingBag className="w-3.5 h-3.5" />
+                )}
+                <span>Add to Cart</span>
+              </button>
+            )}
           </div>
         </div>
-
-        {/* Text Container */}
-        <div className="mt-5 text-center relative px-2">
-          {product.brand && (
-            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest leading-none mb-1 select-none">
-              {product.brand}
-            </p>
-          )}
-          <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest line-clamp-1">
-            {name}
-          </h3>
-          {product.variantOptions && Object.keys(product.variantOptions).length > 0 && (
-            <p className="text-[10px] text-gray-400 mt-0.5 font-medium tracking-wide">
-              {Object.entries(product.variantOptions)
-                .map(([axis, value]) => `${axis}: ${value}`)
-                .join(" · ")}
-            </p>
-          )}
-          <p className="text-xs text-gray-500 mt-1 font-medium tracking-wide">
-            {formattedPrice}
-          </p>
-          <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-px bg-gray-400 transition-all duration-300 group-hover:w-1/2"></span>
-        </div>
-      </Link>
+      </div>
     </motion.div>
   );
 };
 
-// --- Main WishlistPage Component ---
+// ── LOADING SKELETON ──────────────────────────────────────────────────────────
+const LoadingSkeleton = () => (
+  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+    {[...Array(4)].map((_, i) => (
+      <div
+        key={i}
+        className="flex flex-col w-full rounded-2xl sm:rounded-3xl bg-white border border-[#E6DFD5] animate-pulse shadow-xs overflow-hidden"
+      >
+        <div className="aspect-[4/3] sm:aspect-square w-full bg-[#FAF8F2] border-b border-[#E6DFD5]/60" />
+        <div className="p-4 sm:p-5 space-y-3">
+          <div className="h-4 bg-[#EAE4D9] rounded w-3/4" />
+          <div className="h-3 bg-[#EAE4D9] rounded w-1/2" />
+          <div className="flex items-center justify-between pt-2">
+            <div className="h-5 bg-[#EAE4D9] rounded w-1/4" />
+            <div className="flex gap-2">
+              <div className="h-9 w-9 bg-[#EAE4D9] rounded-xl" />
+              <div className="h-9 w-24 bg-[#EAE4D9] rounded-xl" />
+            </div>
+          </div>
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
+// ── MAIN WISHLIST PAGE ────────────────────────────────────────────────────────
 const WishlistPage = () => {
   const navigate = useNavigate();
   const {
     wishlistItems,
-    fetchWishlist,
     loading,
     wishlistCount,
     clearWishlist,
@@ -200,18 +335,15 @@ const WishlistPage = () => {
 
   const [isClearModalOpen, setClearModalOpen] = useState(false);
 
-  useEffect(() => {
-    fetchWishlist();
-  }, [fetchWishlist]);
-
   const handleClearConfirm = async () => {
     const success = await clearWishlist();
     setClearModalOpen(false);
     if (success) {
-      (toast.success("Wishlist cleared successfully"),
-        { id: "wishlist cleared " });
+      toast.success("Wishlist cleared successfully", {
+        id: "wishlist-cleared",
+      });
     } else {
-      (toast.error("Failed to clear wishlist"), { id: "failed wishlist" });
+      toast.error("Failed to clear wishlist", { id: "wishlist-clear-fail" });
     }
   };
 
@@ -220,135 +352,115 @@ const WishlistPage = () => {
     hidden: { opacity: 0 },
     visible: {
       opacity: 1,
-      transition: { staggerChildren: 0.1 },
+      transition: { staggerChildren: 0.08 },
     },
   };
 
   const cardVariants: Variants = {
-    hidden: { y: 30, opacity: 0 },
+    hidden: { y: 16, opacity: 0 },
     visible: {
       y: 0,
       opacity: 1,
-      transition: { duration: 0.6, ease: "easeOut" as const },
+      transition: { duration: 0.35, ease: "easeOut" as const },
     },
   };
 
-  // --- Loading Skeleton ---
-  const LoadingSkeleton = () => (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-10">
-      {[...Array(4)].map((_, i) => (
-        <div key={i} className="animate-pulse">
-          <div className="w-full aspect-[3/4] bg-gray-200 rounded-xl mb-4"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/2 mx-auto"></div>
-        </div>
-      ))}
-    </div>
-  );
-
   return (
-  <section className="bg-white min-h-screen pt-(--app-header-h) pb-24 relative overflow-hidden">
-    {/* Toast Configuration */}
+    <div className="relative bg-[#FAF8F2] min-h-screen pb-24 pt-[calc(var(--app-header-h,120px)+28px)] font-body text-[#172B2A] overflow-x-hidden">
+      {/* Custom Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={isClearModalOpen}
+        onClose={() => setClearModalOpen(false)}
+        onConfirm={handleClearConfirm}
+      />
 
-    {/* Custom Confirmation Modal */}
-    <ConfirmationModal
-      isOpen={isClearModalOpen}
-      onClose={() => setClearModalOpen(false)}
-      onConfirm={handleClearConfirm}
-    />
+      {/* Decorative ambient background */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-96 bg-gradient-to-b from-[#DDEDEA]/40 via-[#FAF8F2]/60 to-transparent pointer-events-none -z-10 blur-2xl" />
+      <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 rounded-full bg-[#0B6B6B]/5 blur-3xl pointer-events-none -z-10" />
 
-    {/* Background Decor */}
-    <div
-      className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 rounded-full blur-3xl opacity-50 pointer-events-none"
-      style={{ background: "color-mix(in srgb, var(--theme-accent) 35%, transparent)" }}
-    ></div>
-
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 pt-10">
-
-      {/* Conditionally render header block only when data is loaded and items exist */}
-      {!loading && wishlistCount > 0 && (
-        <>
-          <button
-            onClick={() => navigate(-1)}
-            className="group flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-gray-900 transition-colors mb-6"
-          >
-            <ArrowLeft className="w-3.5 h-3.5 transform transition-transform group-hover:-translate-x-1" />
-            <span>Go Back</span>
-          </button>
-
-          {/* Header Section */}
-          <div className="text-center mb-16 relative">
-            <motion.h2
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              className="text-3xl font-bold tracking-tighter text-gray-900 sm:text-5xl"
-              style={{ fontFamily: "var(--theme-font-heading)" }}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        {/* Header Section */}
+        <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <button
+              onClick={() => navigate(-1)}
+              className="p-2.5 rounded-xl bg-white border border-[#E6DFD5] text-[#172B2A] hover:bg-[#F1E9DA] hover:text-[#0B6B6B] transition-colors group shrink-0 shadow-2xs cursor-pointer"
+              aria-label="Go back"
             >
-              My Wishlist
-            </motion.h2>
-
-            <motion.div
-              initial={{ width: 0 }}
-              whileInView={{ width: "80px" }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.8 }}
-              className="h-1 mx-auto mt-4 mb-6"
-              style={{ background: "var(--theme-primary)" }}
-            />
-
-            {/* Clear All Action (Redundant inner check removed) */}
-            <motion.button
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5 }}
-              onClick={() => setClearModalOpen(true)}
-              className="group flex items-center justify-center gap-2 mx-auto text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-red-600 transition-colors"
-            >
-              <span>Clear All Items</span>
-              <Trash2 className="w-3 h-3 group-hover:scale-110 transition-transform" />
-            </motion.button>
+              <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
+            </button>
+            <div>
+              <h1 className="font-heading text-2xl sm:text-3xl font-bold text-[#172B2A] leading-tight">
+                My Wishlist
+              </h1>
+              {!loading && (
+                <p className="text-sm text-[#34504D] mt-0.5">
+                  {wishlistCount} {wishlistCount === 1 ? "item" : "items"} saved for later
+                </p>
+              )}
+            </div>
           </div>
-        </>
-      )}
 
-      {/* Remaining Content Area (loading state / grid / empty state) continues here... */}
+            {/* Actions on Top Right when items exist */}
+            {!loading && wishlistCount > 0 && (
+              <div className="flex items-center gap-3">
+                <Link
+                  to="/"
+                  className="hidden sm:inline-flex items-center text-sm font-semibold text-[#0B6B6B] hover:underline"
+                >
+                  ← Continue shopping
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setClearModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider text-[#B91C1C] hover:text-red-700 bg-white hover:bg-rose-50 border border-[#E6DFD5] hover:border-rose-200 shadow-2xs transition-all cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Clear All</span>
+                </button>
+              </div>
+            )}
+        </div>
 
-        {/* Content Area */}
-        {loading ? (
-          <LoadingSkeleton />
+        {/* Main Content */}
+        {loading && wishlistCount === 0 ? (
+          <div className="mt-8">
+            <LoadingSkeleton />
+          </div>
         ) : wishlistCount === 0 ? (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-center py-20"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35 }}
+            className="mt-8 text-center py-16 sm:py-20 px-6 bg-white rounded-3xl border border-[#E6DFD5] shadow-xs max-w-lg mx-auto"
           >
-            <div className="mx-auto w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-6 text-gray-300">
-              <ShoppingBag className="w-8 h-8" />
+            <div className="w-20 h-20 rounded-full bg-[#DDEDEA] border border-[#D0E5E0] flex items-center justify-center mx-auto mb-6 text-[#0B6B6B]">
+              <Heart className="w-9 h-9 fill-[#0B6B6B]/20 text-[#0B6B6B]" />
             </div>
-            <h3 className="text-lg font-bold text-gray-900 uppercase tracking-widest mb-2">
+            <h2 className="font-serif text-2xl sm:text-3xl font-bold text-[#172B2A] mb-3">
               Your Wishlist is Empty
-            </h3>
-            <p className="text-gray-500 font-light mb-8">
-              Start exploring our collections to add items.
+            </h2>
+            <p className="text-[#34504D] mb-8 text-sm sm:text-base leading-relaxed max-w-sm mx-auto">
+              You haven't saved any items yet. Explore our authentic Ayurvedic remedies and formulations to add items.
             </p>
             <Link
-              to="/products"
-              className="inline-block border-b border-gray-900 text-gray-900 pb-1 text-sm uppercase tracking-widest hover:text-[var(--theme-primary)] hover:border-[var(--theme-primary)] transition-colors"
+              to="/"
+              className="inline-flex items-center justify-center gap-2.5 w-full sm:w-auto px-8 h-13 bg-[#0B6B6B] hover:bg-[#084F4F] text-white rounded-xl font-bold text-sm sm:text-base transition-colors shadow-sm"
             >
-              Continue Shopping
+              <span>Explore Products</span>
+              <ArrowRight className="w-4 h-4" />
             </Link>
           </motion.div>
         ) : (
           <motion.div
             variants={containerVariants}
             initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, margin: "-50px" }}
-            className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-12"
+            animate="visible"
+            className="mt-8 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6"
           >
             {wishlistItems.map((product) => (
               <WishlistProductCard
-                key={`${product.id ?? product._id ?? product.image ?? product.name ?? "wishlist-item"}-${product.variantId ?? ""}`}
+                key={`${product.id ?? product._id ?? "wishlist-item"}-${product.variantId ?? ""}`}
                 product={product}
                 cardVariants={cardVariants}
               />
@@ -356,7 +468,7 @@ const WishlistPage = () => {
           </motion.div>
         )}
       </div>
-    </section>
+    </div>
   );
 };
 

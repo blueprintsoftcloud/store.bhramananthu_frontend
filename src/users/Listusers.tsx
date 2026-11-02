@@ -96,9 +96,29 @@ const PaginationControls = ({
   const hasResults = totalItems > 0;
   const start = hasResults ? (currentPage - 1) * pageSize + 1 : 0;
   const end = hasResults ? Math.min(currentPage * pageSize, totalItems) : 0;
+
+  // Windowing logic with ellipsis for clean, non-overflowing pagination
+  const getPageNumbers = (): (number | "...")[] => {
+    const pages: (number | "...")[] = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (currentPage > 3) pages.push("...");
+      const startPage = Math.max(2, currentPage - 1);
+      const endPage = Math.min(totalPages - 1, currentPage + 1);
+      for (let i = startPage; i <= endPage; i++) {
+        pages.push(i);
+      }
+      if (currentPage < totalPages - 2) pages.push("...");
+      pages.push(totalPages);
+    }
+    return pages;
+  };
+
   return (
-    <div className="flex flex-col sm:flex-row items-center justify-between border-t border-slate-100 bg-slate-50/50 px-5 py-3.5 rounded-b-3xl">
-      <p className="text-xs text-slate-500 font-medium mb-3 sm:mb-0">
+    <div className="flex flex-col sm:flex-row items-center justify-between border-t border-slate-100 bg-slate-50/50 px-5 py-3.5 rounded-b-3xl gap-3">
+      <p className="text-xs text-slate-500 font-medium">
         {hasResults ? (
           <>
             Showing <span className="font-bold text-slate-900">{start}</span> to{" "}
@@ -114,34 +134,53 @@ const PaginationControls = ({
           onClick={() => {
             onPageChange(currentPage - 1);
           }}
-          disabled={currentPage === 1 || totalPages === 0}
+          disabled={currentPage <= 1 || totalPages === 0}
           className="flex items-center justify-center rounded-xl p-2 text-slate-500 border border-slate-200 bg-white hover:bg-slate-50 hover:text-slate-900 disabled:opacity-40 transition-all cursor-pointer"
+          title="Previous Page"
         >
           <ChevronLeftIcon className="h-4 w-4" strokeWidth={2.2} />
         </button>
+
+        {/* Mobile Page Summary */}
+        <span className="md:hidden text-xs font-semibold text-slate-600 px-2">
+          Page {currentPage} of {totalPages || 1}
+        </span>
+
+        {/* Desktop Sliding Window */}
         <div className="hidden md:flex items-center gap-1">
-          {Array.from({ length: totalPages || 0 }, (_, i) => i + 1).map((p) => (
-            <button
-              key={p}
-              onClick={() => {
-                onPageChange(p);
-              }}
-              className={`w-8 h-8 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                p === currentPage
-                  ? "bg-slate-950 text-white shadow-sm"
-                  : "text-slate-600 bg-white border border-slate-200 hover:bg-slate-50"
-              }`}
-            >
-              {p}
-            </button>
-          ))}
+          {getPageNumbers().map((p, idx) =>
+            p === "..." ? (
+              <span
+                key={`ellipsis-${idx}`}
+                className="w-8 h-8 flex items-center justify-center text-xs font-bold text-slate-400 select-none"
+              >
+                …
+              </span>
+            ) : (
+              <button
+                key={p}
+                onClick={() => {
+                  onPageChange(p);
+                }}
+                className={`min-w-8 h-8 px-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                  p === currentPage
+                    ? "bg-slate-950 text-white shadow-sm"
+                    : "text-slate-600 bg-white border border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                {p}
+              </button>
+            )
+          )}
         </div>
+
         <button
           onClick={() => {
             onPageChange(currentPage + 1);
           }}
-          disabled={currentPage === totalPages || totalPages === 0}
+          disabled={currentPage >= totalPages || totalPages === 0}
           className="flex items-center justify-center rounded-xl p-2 text-slate-500 border border-slate-200 bg-white hover:bg-slate-50 hover:text-slate-900 disabled:opacity-40 transition-all cursor-pointer"
+          title="Next Page"
         >
           <ChevronRightIcon className="h-4 w-4" strokeWidth={2.2} />
         </button>
@@ -548,7 +587,7 @@ const ListUsers = ({ roleFilter }: ListUsersProps) => {
         {loading && (
           <div className="py-16 text-center">
             <ClipLoader color="#0f172a" size={28} />
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mt-3">Loading directory...</p>
+            <p className="text-sm font-bold uppercase tracking-wider text-slate-400 mt-3">Loading directory...</p>
           </div>
         )}
         

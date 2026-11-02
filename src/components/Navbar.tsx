@@ -1,1841 +1,572 @@
-import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { Dialog, DialogPanel, DialogBackdrop } from "@headlessui/react";
-import {
-  Bars3Icon,
-  UserIcon,
-  XMarkIcon,
-  HeartIcon as HeartOutline,
-  BellIcon,
-  ShoppingBagIcon,
-  ChevronDownIcon,
-  HomeIcon,
-  CubeIcon,
-  ClipboardDocumentListIcon,
-  CreditCardIcon,
-  MagnifyingGlassIcon,
-  TruckIcon,
-} from "@heroicons/react/24/outline";
-import {
-  HeartIcon as HeartSolid,
-  ShoppingBagIcon as ShoppingBagSolid,
-  BellIcon as BellSolid,
-} from "@heroicons/react/24/solid";
-import logo123 from "../assets/logo.png";
-import { useWishlist } from "../context/WishlistContext";
+import { Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
+import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
-import { useBranding } from "../context/BrandingContext";
-import { useUserNotifications } from "../context/UserNotificationContext";
-import { useNotifications } from "../context/NotificationContext";
 import CustomerAuthModal from "./CustomerAuthModal";
-import TrackShippingModal from "./TrackShippingModal";
-import CategoryMegaMenu from "./CategoryMegaMenu";
-import toast from "react-hot-toast";
-import api from "../utils/api";
-import { domainUrl } from "../utils/constant";
-import { getCustomerNotificationTarget } from "../utils/notificationRoute";
+import panakkalLogo from "../assets/Panakkallogo.png";
+import { useUiStore } from "../store/uiStore";
 
-interface NavbarConfig {
-  activeTemplate: 1 | 2 | 3 | 4 | 5 | 6;
-}
+export type TextSizeLevel = "normal" | "large" | "xlarge";
 
-const DEFAULT_NAVBAR_CONFIG: NavbarConfig = {
-  activeTemplate: 1,
-};
-
-const NAVBAR_CACHE_KEY = "crm_navbar_cache";
-
-const Navbar = ({
-  user,
-  role,
-  cartItemCount = 0,
-  handleLogout,
-}: {
+interface NavbarProps {
   user?: { isAuthenticated?: boolean; role?: string | null };
   role?: string | null;
   cartItemCount?: number;
   handleLogout?: () => void;
+}
+
+const Navbar: React.FC<NavbarProps> = ({
+  user: userProp,
+  role: roleProp,
+  cartItemCount: cartItemCountProp,
+  handleLogout: handleLogoutProp,
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout } = useAuth();
-  const { branding } = useBranding();
-  const logoSrc = branding.companyLogo
-    ? branding.companyLogo.startsWith("http")
-      ? branding.companyLogo
-      : `${domainUrl}/${branding.companyLogo}`
-    : logo123;
-  const { wishlistCount } = useWishlist();
-  const {
-    notifications: userNotifications,
-    unreadCount: userUnreadCount,
-    markAsRead,
-    markAllRead: markAllUserRead,
-    deleteNotification: deleteUserNotification,
-    clearAllNotifications: clearAllUserNotifications,
-  } = useUserNotifications();
-  const { unreadCount: adminUnreadCount } = useNotifications();
+  const headerRef = useRef<HTMLDivElement>(null);
+  const userDropdownRef = useRef<HTMLDivElement>(null);
+  const { cartItems } = useCart();
+  const { user: authContextUser, logout: authContextLogout } = useAuth();
 
-  const isAdmin = role === "ADMIN" || role === "SUPER_ADMIN";
-  const adminDashboardPath =
-    role === "SUPER_ADMIN" ? "/super-admin-dashboard" : "/admin-dashboard";
-  const unreadCount = isAdmin ? adminUnreadCount : userUnreadCount;
-  const [notifOpen, setNotifOpen] = useState(false);
-  const notifRef = useRef<HTMLDivElement>(null);
+  // Unified auth state (supporting both prop and context)
+  const isAuthenticated = userProp?.isAuthenticated ?? authContextUser.isAuthenticated;
+  const userRole = userProp?.role ?? authContextUser.role ?? roleProp;
+  const isAdmin = userRole === "ADMIN" || userRole === "SUPER_ADMIN";
 
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  // Modal & Dropdown state
   const [customerAuthOpen, setCustomerAuthOpen] = useState(false);
-  const [trackShippingOpen, setTrackShippingOpen] = useState(false);
-  const [trackingNavConfig, setTrackingNavConfig] = useState<{
-    enabled: boolean;
-    enabledPartners: string[];
-  }>(() => {
-    try {
-      const cached = localStorage.getItem("CACHED_TRACKING_CONFIG");
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        return {
-          enabled: parsed?.enabled !== false,
-          enabledPartners: Array.isArray(parsed?.enabledPartners) ? parsed.enabledPartners : [],
-        };
-      }
-    } catch {}
-    return {
-      enabled: true,
-      enabledPartners: [],
-    };
-  });
-  const headerRef = useRef<HTMLElement>(null);
-
-  // --- NAVBAR TEMPLATE CONFIG ---
-  const [navbarConfig, setNavbarConfig] = useState<NavbarConfig>(() => {
-    try {
-      const cached = localStorage.getItem(NAVBAR_CACHE_KEY);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (
-          typeof parsed?.activeTemplate === "number" &&
-          parsed.activeTemplate >= 1 &&
-          parsed.activeTemplate <= 6
-        ) {
-          return parsed;
-        }
-      }
-    } catch {}
-    return DEFAULT_NAVBAR_CONFIG;
-  });
-
-  const activeTemplate = (navbarConfig?.activeTemplate || 1) as 1 | 2 | 3 | 4 | 5 | 6;
-
-  // Fetch active tracking partners configuration
-  useEffect(() => {
-    api
-      .get("/settings/tracking-partners")
-      .then(({ data }) => {
-        if (data) {
-          const config = {
-            enabled: data.enabled !== false,
-            enabledPartners: Array.isArray(data.enabledPartners) ? data.enabledPartners : [],
-          };
-          setTrackingNavConfig(config);
-          try {
-            localStorage.setItem("CACHED_TRACKING_CONFIG", JSON.stringify(data));
-          } catch {}
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  // Fetch active navbar template from backend
-  useEffect(() => {
-    api
-      .get("/home-banners/homepage-config")
-      .then(({ data }) => {
-        if (
-          data?.navbarConfig &&
-          typeof data.navbarConfig.activeTemplate === "number"
-        ) {
-          setNavbarConfig(data.navbarConfig);
-          try {
-            localStorage.setItem(
-              NAVBAR_CACHE_KEY,
-              JSON.stringify(data.navbarConfig)
-            );
-          } catch {}
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  // Listen for real-time preview template updates from Homepage Manager
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === "STORRA_PREVIEW_NAVBAR") {
-        const tmpl = (Number(event.data.template) || 1) as 1 | 2 | 3 | 4 | 5 | 6;
-        setNavbarConfig({ activeTemplate: tmpl });
-      }
-    };
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
-
-  // --- SEARCH STATE ---
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<{
-    categories: Array<{ id: string; name: string; image?: string }>;
-    products: Array<{
-      id: string;
-      name: string;
-      price: number;
-      image?: string;
-      category?: { id: string; name: string };
-    }>;
-  } | null>(null);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searchFocused, setSearchFocused] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
-
-  // --- ACKNOWLEDGED COUNT STATE (Persisted) ---
-  const [ackCartCount, setAckCartCount] = useState(() => {
-    return parseInt(localStorage.getItem("ack_cart_count") || "0", 10);
-  });
-
-  const [ackWishlistCount, setAckWishlistCount] = useState(() => {
-    return parseInt(localStorage.getItem("ack_wishlist_count") || "0", 10);
-  });
-
-  // --- MATCHING LOGIC ---
-  const currentPath = location.pathname.toLowerCase();
-  const isCartPage = currentPath.includes("cart");
-  const isWishlistPage = currentPath.includes("wishlist");
-
-  // --- SYNC LOGIC ---
-  useEffect(() => {
-    if (isCartPage) {
-      setAckCartCount(cartItemCount);
-      localStorage.setItem("ack_cart_count", String(cartItemCount));
-    }
-  }, [isCartPage, cartItemCount]);
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  const { isMobileMenuOpen: mobileMenuOpen, setMobileMenuOpen } = useUiStore();
 
   useEffect(() => {
-    if (!isWishlistPage) return;
-    setAckWishlistCount((prev) => {
-      const next = Math.max(prev, wishlistCount);
-      localStorage.setItem("ack_wishlist_count", String(next));
-      return next;
-    });
-  }, [isWishlistPage, wishlistCount]);
+    setMobileMenuOpen(false);
+  }, [location.pathname, setMobileMenuOpen]);
 
-  // Scroll effect
-  useEffect(() => {
-    const handleScroll = () => {
-      setScrolled(window.scrollY > 10);
-    };
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+  // Real-time cart quantity for both guest and logged in users
+  const totalCartCount =
+    cartItems?.reduce((sum, item) => sum + (item.quantity || 1), 0) ??
+    cartItemCountProp ??
+    0;
 
-  // Header dynamic height publication
-  useLayoutEffect(() => {
-    const el = headerRef.current;
-    if (!el) return;
-    const applyHeight = () => {
-      document.documentElement.style.setProperty(
-        "--app-header-h",
-        `${el.offsetHeight}px`
-      );
-    };
-    applyHeight();
-    const observer = new ResizeObserver(applyHeight);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  // Open auth modal from anywhere via window event
+  // Open auth modal from anywhere via global window event
   useEffect(() => {
     const handler = () => setCustomerAuthOpen(true);
     window.addEventListener("openCustomerAuth", handler);
     return () => window.removeEventListener("openCustomerAuth", handler);
   }, []);
 
-  // Close notification dropdown on outside click
+  // Close user dropdown on outside click
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (notifRef.current && !notifRef.current.contains(e.target as Node))
-        setNotifOpen(false);
-    };
-    if (notifOpen) document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [notifOpen]);
-
-  // Close search on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
+    const handleClickOutside = (event: MouseEvent) => {
       if (
-        searchRef.current &&
-        !searchRef.current.contains(e.target as Node)
+        userDropdownRef.current &&
+        !userDropdownRef.current.contains(event.target as Node)
       ) {
-        setSearchFocused(false);
+        setIsUserDropdownOpen(false);
       }
     };
-    if (searchFocused) document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [searchFocused]);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
-  // Debounced search API call
+  // Text size state: normal (A), large (A+), xlarge (A++)
+  // Defaults to "xlarge" (A++) when a customer enters the page
+  const [textSize, setTextSize] = useState<TextSizeLevel>(() => {
+    try {
+      const v2 = localStorage.getItem("bhramananthu_text_size_v2");
+      if (v2 === "normal" || v2 === "large" || v2 === "xlarge") return v2;
+      const saved = localStorage.getItem("bhramananthu_text_size");
+      if (saved === "normal" || saved === "xlarge") return saved;
+    } catch {
+      // ignore
+    }
+    return "xlarge";
+  });
+
+  const handleTextSizeChange = (level: TextSizeLevel) => {
+    setTextSize(level);
+    try {
+      localStorage.setItem("bhramananthu_text_size_v2", level);
+      localStorage.setItem("bhramananthu_text_size", level);
+      document.documentElement.setAttribute("data-text-size", level);
+    } catch {
+      // ignore
+    }
+  };
+
   useEffect(() => {
-    if (!searchQuery.trim() || searchQuery.trim().length < 2) {
-      setSearchResults(null);
-      setSearchLoading(false);
-      return;
-    }
-    setSearchLoading(true);
-    const timer = setTimeout(async () => {
-      try {
-        const res = await api.get(
-          `/user/shop/global-search?q=${encodeURIComponent(
-            searchQuery.trim()
-          )}`
+    document.documentElement.setAttribute("data-text-size", textSize);
+  }, [textSize]);
+
+  // Keep --app-header-h synchronized with real header height
+  useEffect(() => {
+    if (!headerRef.current) return;
+    const updateHeaderHeight = () => {
+      if (headerRef.current && !mobileMenuOpen) {
+        document.documentElement.style.setProperty(
+          "--app-header-h",
+          `${headerRef.current.offsetHeight}px`
         );
-        setSearchResults(res.data);
-      } catch {
-        setSearchResults({ categories: [], products: [] });
-      } finally {
-        setSearchLoading(false);
       }
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+    };
 
-  const handleCategoryClick = (categoryId: string) => {
-    setSearchFocused(false);
-    setSearchQuery("");
-    setSearchResults(null);
-    navigate(`/categories/${categoryId}`);
-  };
+    updateHeaderHeight();
+    const observer = new ResizeObserver(updateHeaderHeight);
+    observer.observe(headerRef.current);
+    return () => observer.disconnect();
+  }, [mobileMenuOpen]);
 
-  const handleProductClick = (productId: string) => {
-    setSearchFocused(false);
-    setSearchQuery("");
-    setSearchResults(null);
-    navigate(`/products/${productId}`);
-  };
-
-  const isAuthenticated = user?.isAuthenticated;
-
-  // --- BADGE VISIBILITY LOGIC ---
-  const showCartBadge = cartItemCount > ackCartCount;
-  const showWishlistBadge = wishlistCount > 0;
-
-  const handleCartClick = () => {
-    setAckCartCount(cartItemCount);
-    localStorage.setItem("ack_cart_count", String(cartItemCount));
-  };
-
-  const handleWishlistClick = (e: React.MouseEvent) => {
-    handleGatedNavigation(e, "/WishlistPage", true);
-    setAckWishlistCount((prev) => {
-      const next = Math.max(prev, wishlistCount);
-      localStorage.setItem("ack_wishlist_count", String(next));
-      return next;
-    });
-  };
-
-  const handleUserIconClick = () => {
-    if (!isAuthenticated) {
-      setCustomerAuthOpen(true);
-    } else {
-      setIsUserDropdownOpen(!isUserDropdownOpen);
-    }
-  };
-
-  const handleGatedNavigation = (
-    e: React.MouseEvent,
-    path: string,
-    isProtected: boolean
+  // Smooth scroll handler for anchor links
+  const handleNavClick = (
+    e: React.MouseEvent<HTMLAnchorElement>,
+    anchorId: string
   ) => {
     e.preventDefault();
+    setMobileMenuOpen(false);
 
-    if (isProtected && !isAuthenticated) {
-      window.dispatchEvent(new CustomEvent("openCustomerAuth"));
-      return;
+    if (location.pathname === "/") {
+      const element = document.getElementById(anchorId);
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    } else {
+      navigate(`/#${anchorId}`);
+      setTimeout(() => {
+        const element = document.getElementById(anchorId);
+        if (element) {
+          element.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 150);
     }
-
-    navigate(path);
   };
 
-  interface NavItem {
-    name: string;
-    href: string;
-    protected: boolean;
-    icon: any;
-    isAction?: boolean;
-    onClick?: (e: React.MouseEvent) => void;
-  }
-
-  const navigation: NavItem[] = [
-    { name: "Home", href: "/", protected: false, icon: HomeIcon },
-    { name: "Products", href: "/products", protected: false, icon: CubeIcon },
-    ...(trackingNavConfig.enabled !== false
-      ? [
-          {
-            name: "Shipment Tracking",
-            href: "#track-shipping",
-            protected: false,
-            icon: TruckIcon,
-            isAction: true,
-            onClick: (e: React.MouseEvent) => {
-              e.preventDefault();
-              setTrackShippingOpen(true);
-            },
-          },
-        ]
-      : []),
-    ...(isAuthenticated
-      ? [
-          {
-            name: "My Orders",
-            href: "/myorders",
-            protected: true,
-            icon: ClipboardDocumentListIcon,
-          },
-          {
-            name: "Transactions",
-            href: "/transactions",
-            protected: true,
-            icon: CreditCardIcon,
-          },
-        ]
-      : []),
+  const navLinks = [
+    { name: "Uses", href: "uses" },
+    { name: "About", href: "about" },
+    { name: "How to use", href: "how-to-use" },
+    { name: "Ingredients", href: "ingredients" },
+    { name: "Reviews", href: "reviews" },
+    { name: "FAQs", href: "faqs" },
+    { name: "Contact", href: "contact" },
   ];
-
-  const isActive = (path: string) => {
-    if (path === "/") return location.pathname === "/";
-    return location.pathname.startsWith(path);
-  };
-
-  // --- TEMPLATE VARIANT STYLING COMPUTATIONS (Pairs 1-to-1 with Footer 1-6) ---
-  const isDark = activeTemplate === 1 || activeTemplate === 3;
-  const isThemeBand = activeTemplate === 5;
-
-  const getNavContainerClass = () => {
-    switch (activeTemplate) {
-      case 1: // Dark Professional (Matches Footer 1)
-        return scrolled
-          ? "bg-[#0a0a0a]/95 backdrop-blur-2xl shadow-2xl shadow-black/60 py-3 sm:py-3.5 lg:py-4 min-h-[62px] sm:min-h-[68px] lg:min-h-[76px] border-b border-white/10"
-          : "bg-[#0a0a0a]/90 backdrop-blur-xl border-b border-white/10 py-4 sm:py-5 lg:py-6 min-h-[72px] sm:min-h-[80px] lg:min-h-[90px]";
-
-      case 2: // Light Editorial (Matches Footer 2)
-        return scrolled
-          ? "bg-gray-50/95 backdrop-blur-2xl shadow-md shadow-black/5 py-3 sm:py-3.5 lg:py-4 min-h-[62px] sm:min-h-[68px] lg:min-h-[76px] border-b border-gray-200"
-          : "bg-gray-50/90 backdrop-blur-xl border-b border-gray-200 py-4 sm:py-5 lg:py-6 min-h-[72px] sm:min-h-[80px] lg:min-h-[90px]";
-
-      case 3: // Gradient with Aurora Accent (Matches Footer 3)
-        return scrolled
-          ? "bg-gradient-to-r from-indigo-950/98 via-slate-900/98 to-gray-950/98 backdrop-blur-2xl shadow-2xl shadow-indigo-950/50 py-3 sm:py-3.5 lg:py-4 min-h-[62px] sm:min-h-[68px] lg:min-h-[76px] border-b border-indigo-500/25"
-          : "bg-gradient-to-r from-indigo-950/92 via-slate-900/92 to-gray-950/92 backdrop-blur-xl border-b border-indigo-500/20 py-4 sm:py-5 lg:py-6 min-h-[72px] sm:min-h-[80px] lg:min-h-[90px]";
-
-      case 4: // Minimal Centered (Matches Footer 4)
-        return scrolled
-          ? "bg-white/95 backdrop-blur-2xl shadow-xs py-3 sm:py-3.5 lg:py-4 min-h-[62px] sm:min-h-[68px] lg:min-h-[76px] border-b border-gray-100"
-          : "bg-white/90 backdrop-blur-xl border-b border-gray-100 py-4 sm:py-5 lg:py-6 min-h-[72px] sm:min-h-[80px] lg:min-h-[90px]";
-
-      case 5: // Festive Accent Band (Matches Footer 5)
-        return scrolled
-          ? "bg-[var(--theme-primary)] text-[var(--theme-primary-ink)] shadow-xl shadow-[var(--theme-primary)]/25 py-3 sm:py-3.5 lg:py-4 min-h-[62px] sm:min-h-[68px] lg:min-h-[76px] border-b border-black/10"
-          : "bg-[var(--theme-primary)] text-[var(--theme-primary-ink)] shadow-md shadow-[var(--theme-primary)]/15 py-4 sm:py-5 lg:py-6 min-h-[72px] sm:min-h-[80px] lg:min-h-[90px] border-b border-black/5";
-
-      case 6: // Split Statement / Modern Asymmetric (Matches Footer 6)
-      default:
-        return scrolled
-          ? "bg-white/95 backdrop-blur-2xl shadow-xl shadow-black/10 py-3 sm:py-3.5 lg:py-4 min-h-[62px] sm:min-h-[68px] lg:min-h-[76px] border-b border-black/10"
-          : "bg-white/90 backdrop-blur-xl border-b border-black/10 py-4 sm:py-5 lg:py-6 min-h-[72px] sm:min-h-[80px] lg:min-h-[90px]";
-    }
-  };
-
-  const getBrandTitleClass = () => {
-    if (isDark) return "text-white font-black tracking-wider uppercase";
-    if (isThemeBand) return "text-[var(--theme-primary-ink)] font-black tracking-wider uppercase";
-    if (activeTemplate === 2) return "text-gray-900 font-serif font-black tracking-wider uppercase";
-    if (activeTemplate === 4) return "text-gray-950 font-serif font-black tracking-widest uppercase";
-    return "text-gray-950 font-black tracking-tight uppercase";
-  };
-
-  const getBrandTaglineClass = () => {
-    if (isDark) return "text-zinc-400";
-    if (isThemeBand) return "text-[var(--theme-primary-ink)]/75";
-    return "text-gray-500";
-  };
-
-  const getHamburgerClass = () => {
-    if (isDark) return "text-zinc-200 hover:text-white hover:bg-white/10";
-    if (isThemeBand) return "text-[var(--theme-primary-ink)] hover:bg-black/10";
-    return "text-gray-800 hover:text-black hover:bg-black/5";
-  };
-
-  const getSearchInputClass = () => {
-    switch (activeTemplate) {
-      case 1: // Dark Professional
-        return "w-36 lg:w-44 xl:w-56 focus:w-64 pl-9 pr-8 py-2 bg-white/5 border border-white/10 rounded-xl text-xs xl:text-sm text-white placeholder-zinc-500 focus:outline-none focus:bg-white/10 focus:border-[var(--theme-primary)]/60 focus:ring-2 focus:ring-[var(--theme-primary)]/20 transition-all duration-300 ease-out";
-
-      case 2: // Light Editorial
-        return "w-36 lg:w-44 xl:w-56 focus:w-64 pl-9 pr-8 py-2 bg-white border border-gray-300/80 rounded-lg text-xs xl:text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary)]/25 transition-all duration-200";
-
-      case 3: // Gradient with Aurora Accent
-        return "w-36 lg:w-44 xl:w-56 focus:w-64 pl-9 pr-8 py-2 bg-white/10 border border-white/20 rounded-full text-xs xl:text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[var(--theme-primary)] focus:bg-white/15 transition-all duration-300 ease-out";
-
-      case 4: // Minimal Centered
-        return "w-32 lg:w-40 xl:w-52 focus:w-60 pl-8 pr-7 py-1.5 lg:py-2 bg-gray-50/90 hover:bg-gray-100/80 border-0 rounded-full text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[var(--theme-primary)]/40 focus:bg-white transition-all duration-300";
-
-      case 5: // Festive Accent Band
-        return "w-36 lg:w-44 xl:w-56 focus:w-64 pl-9 pr-8 py-2 bg-white/20 border border-white/25 rounded-xl text-xs xl:text-sm text-[var(--theme-primary-ink)] placeholder-[var(--theme-primary-ink)]/60 focus:outline-none focus:bg-white focus:text-gray-900 focus:placeholder-gray-400 transition-all duration-300";
-
-      case 6: // Split Statement
-      default:
-        return "w-36 lg:w-44 xl:w-56 focus:w-64 pl-9 pr-8 py-2 bg-gray-100/90 hover:bg-gray-100 border-0 rounded-2xl text-xs xl:text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--theme-primary)]/30 focus:bg-white transition-all duration-300 shadow-xs";
-    }
-  };
-
-  const getActionButtonClass = () => {
-    switch (activeTemplate) {
-      case 1: // Dark Professional
-        return "relative flex items-center justify-center p-2.5 lg:p-3 rounded-full border border-white/20 text-white hover:border-[var(--theme-primary)] hover:bg-[var(--theme-primary)] hover:text-[var(--theme-primary-ink)] hover:scale-105 active:scale-95 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] group cursor-pointer";
-
-      case 2: // Light Editorial
-        return "relative flex items-center justify-center p-2.5 lg:p-3 rounded-lg border border-gray-200 hover:border-[var(--theme-primary)] hover:bg-white text-gray-700 hover:text-[var(--theme-primary)] hover:scale-105 active:scale-95 transition-all duration-200 group cursor-pointer";
-
-      case 3: // Gradient with Aurora Accent
-        return "relative flex items-center justify-center p-2.5 lg:p-3 rounded-full bg-white/10 hover:bg-white/20 text-white hover:shadow-[0_0_12px_rgba(99,102,241,0.5)] hover:scale-105 active:scale-95 transition-all duration-300 group cursor-pointer";
-
-      case 4: // Minimal Centered
-        return "relative flex items-center justify-center p-2 sm:p-2.5 lg:p-3 rounded-full hover:bg-gray-100 text-gray-700 hover:text-[var(--theme-primary)] hover:scale-105 active:scale-95 transition-all duration-200 group cursor-pointer";
-
-      case 5: // Festive Accent Band
-        return "relative flex items-center justify-center p-2.5 lg:p-3 rounded-full bg-white/15 hover:bg-white hover:text-gray-900 text-[var(--theme-primary-ink)] hover:scale-105 active:scale-95 transition-all duration-200 group cursor-pointer";
-
-      case 6: // Split Statement
-      default:
-        return "relative flex items-center justify-center w-10 h-10 lg:w-11 lg:h-11 rounded-2xl bg-gray-100/80 hover:bg-[var(--theme-primary)] hover:text-[var(--theme-primary-ink)] text-gray-900 hover:scale-105 active:scale-95 transition-all duration-200 group cursor-pointer";
-    }
-  };
-
-  const getSignInButtonClass = () => {
-    switch (activeTemplate) {
-      case 1: // Dark Professional
-        return "bg-[var(--theme-primary)] text-[var(--theme-primary-ink)] hover:bg-[var(--theme-primary-hover)] px-5 lg:px-6 py-2.5 lg:py-3 rounded-xl text-xs lg:text-sm font-black tracking-tight shadow-md shadow-[var(--theme-primary)]/20 transition-all duration-300 hover:-translate-y-0.5 active:scale-95 cursor-pointer";
-
-      case 2: // Light Editorial
-        return "bg-[var(--theme-primary)] text-[var(--theme-primary-ink)] hover:bg-[var(--theme-primary-hover)] uppercase tracking-widest text-[11px] lg:text-xs font-bold px-5 lg:px-6 py-2.5 lg:py-3 rounded-lg shadow-sm hover:shadow-md hover:shadow-[var(--theme-primary)]/25 transition-all duration-300 hover:-translate-y-0.5 active:scale-95 cursor-pointer";
-
-      case 3: // Gradient with Aurora Accent
-        return "bg-[var(--theme-primary)] hover:bg-[var(--theme-primary-hover)] text-[var(--theme-primary-ink)] rounded-full px-5.5 lg:px-6.5 py-2.5 lg:py-3 text-xs md:text-sm font-bold shadow-lg shadow-[var(--theme-primary)]/30 hover:shadow-[var(--theme-primary)]/50 transition-all duration-300 hover:scale-102 active:scale-95 cursor-pointer";
-
-      case 4: // Minimal Centered
-        return "bg-gray-950 hover:bg-[var(--theme-primary)] hover:text-[var(--theme-primary-ink)] text-white rounded-full px-5 lg:px-6 py-2.5 lg:py-3 text-xs lg:text-sm font-semibold tracking-wider transition-all duration-300 hover:shadow-xs active:scale-95 cursor-pointer";
-
-      case 5: // Festive Accent Band
-        return "bg-white text-gray-900 hover:bg-gray-100 rounded-xl px-5 lg:px-6 py-2.5 lg:py-3 font-black text-xs lg:text-sm shadow-md transition-all duration-200 hover:-translate-y-0.5 active:scale-95 cursor-pointer";
-
-      case 6: // Split Statement
-      default:
-        return "bg-black hover:bg-[var(--theme-primary)] hover:text-[var(--theme-primary-ink)] text-white rounded-2xl px-5.5 lg:px-6.5 py-2.5 lg:py-3 font-black text-xs lg:text-sm uppercase tracking-wider shadow-lg shadow-black/20 hover:shadow-[var(--theme-primary)]/30 transition-all duration-300 hover:scale-102 active:scale-95 cursor-pointer";
-    }
-  };
-
-  const getAccountButtonClass = () => {
-    const active = isUserDropdownOpen || isActive("/profile");
-    switch (activeTemplate) {
-      case 1:
-        return active
-          ? "bg-[var(--theme-primary)] text-[var(--theme-primary-ink)] border-[var(--theme-primary)] shadow-lg shadow-[var(--theme-primary)]/20 rounded-xl px-4 py-2"
-          : "border border-white/20 bg-white/10 text-white hover:border-[var(--theme-primary)] hover:text-[var(--theme-primary)] rounded-xl px-4 py-2";
-
-      case 2:
-        return active
-          ? "bg-gray-900 text-white border-gray-900 rounded-lg px-3.5 py-2"
-          : "border border-gray-300 bg-white text-gray-900 hover:border-[var(--theme-primary)] hover:text-[var(--theme-primary)] rounded-lg px-3.5 py-2";
-
-      case 3:
-        return active
-          ? "bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-lg shadow-indigo-500/40 rounded-full px-4.5 py-2"
-          : "bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded-full px-4.5 py-2";
-
-      case 4:
-        return active
-          ? "bg-black text-white rounded-full px-3.5 py-1.5"
-          : "border border-gray-200 bg-white hover:border-[var(--theme-primary)] rounded-full px-3.5 py-1.5 text-gray-800";
-
-      case 5:
-        return active
-          ? "bg-white text-gray-900 shadow-md rounded-xl px-4 py-2"
-          : "bg-white/20 hover:bg-white/30 border border-white/30 text-[var(--theme-primary-ink)] rounded-xl px-4 py-2";
-
-      case 6:
-      default:
-        return active
-          ? "bg-[var(--theme-primary)] text-[var(--theme-primary-ink)] shadow-md rounded-2xl px-4.5 py-2.5"
-          : "bg-gray-100 text-gray-900 hover:bg-[var(--theme-primary)] hover:text-[var(--theme-primary-ink)] rounded-2xl px-4.5 py-2.5";
-    }
-  };
-
-  const renderDesktopNavLink = (item: (typeof navigation)[number]) => {
-    const active = !item.isAction && isActive(item.href);
-
-    const handleClick = (e: React.MouseEvent) => {
-      if (item.isAction && item.onClick) {
-        item.onClick(e);
-        return;
-      }
-      if (item.protected && !isAuthenticated) {
-        handleGatedNavigation(e, item.href, true);
-      }
-    };
-
-    switch (activeTemplate) {
-      case 1: // Dark Professional (Floating pill with micro-lift)
-        return (
-          <Link
-            key={item.name}
-            to={item.href}
-            onClick={handleClick}
-            className={`relative flex items-center text-xs lg:text-sm tracking-tight transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer whitespace-nowrap shrink-0 ${
-              active
-                ? "bg-[var(--theme-primary)] text-[var(--theme-primary-ink)] font-black shadow-lg shadow-[var(--theme-primary)]/25 px-3.5 xl:px-4 py-1.5 lg:py-2 rounded-xl scale-100"
-                : "text-zinc-400 hover:text-[var(--theme-primary)] hover:bg-white/10 px-3 xl:px-3.5 py-1.5 lg:py-2 rounded-xl font-semibold hover:-translate-y-0.5 active:scale-95"
-            }`}
-          >
-            {item.name}
-          </Link>
-        );
-
-      case 2: // Light Editorial (Centered small baseline indicator in theme primary)
-        return (
-          <Link
-            key={item.name}
-            to={item.href}
-            onClick={handleClick}
-            className={`relative flex flex-col items-center justify-center uppercase tracking-wider text-[10px] lg:text-[11px] xl:text-xs px-2.5 lg:px-3.5 py-2 transition-all duration-300 ease-out cursor-pointer group whitespace-nowrap shrink-0 ${
-              active
-                ? "text-gray-950 font-bold"
-                : "text-gray-500 hover:text-[var(--theme-primary)] font-semibold"
-            }`}
-          >
-            <span>{item.name}</span>
-            {active ? (
-              <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-4 sm:w-5 h-[2.5px] bg-[var(--theme-primary)] rounded-full shadow-xs" />
-            ) : (
-              <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-0 group-hover:w-3.5 h-[2px] bg-[var(--theme-primary)]/70 rounded-full transition-all duration-200" />
-            )}
-          </Link>
-        );
-
-      case 3: // Gradient with Aurora Accent (Glowing tech pill)
-        return (
-          <Link
-            key={item.name}
-            to={item.href}
-            onClick={handleClick}
-            className={`relative flex items-center text-xs lg:text-sm tracking-tight transition-all duration-300 ease-out cursor-pointer whitespace-nowrap shrink-0 ${
-              active
-                ? "bg-[var(--theme-primary)] text-[var(--theme-primary-ink)] font-bold px-3.5 xl:px-4.5 py-1.5 lg:py-2 rounded-full shadow-lg shadow-[var(--theme-primary)]/30"
-                : "text-indigo-200/80 hover:text-white hover:bg-white/10 px-3 xl:px-3.5 py-1.5 lg:py-2 rounded-full font-semibold hover:shadow-[0_0_12px_rgba(99,102,241,0.3)]"
-            }`}
-          >
-            {item.name}
-          </Link>
-        );
-
-      case 4: // Minimal Centered (Symmetrical micro-dot indicator)
-        return (
-          <Link
-            key={item.name}
-            to={item.href}
-            onClick={handleClick}
-            className={`relative flex items-center uppercase tracking-wider text-[10px] lg:text-[11px] xl:text-xs px-2.5 lg:px-3.5 py-1.5 lg:py-2 transition-all duration-300 ease-out cursor-pointer whitespace-nowrap shrink-0 ${
-              active
-                ? "text-black font-bold relative after:content-[''] after:absolute after:-bottom-1 after:left-1/2 after:-translate-x-1/2 after:w-1.5 after:h-1.5 after:bg-[var(--theme-primary)] after:rounded-full"
-                : "text-gray-400 hover:text-[var(--theme-primary)] font-medium"
-            }`}
-          >
-            {item.name}
-          </Link>
-        );
-
-      case 5: // Festive Accent Band (Contrast white pill on theme primary)
-        return (
-          <Link
-            key={item.name}
-            to={item.href}
-            onClick={handleClick}
-            className={`relative flex items-center text-xs lg:text-sm tracking-tight transition-all duration-200 cursor-pointer whitespace-nowrap shrink-0 ${
-              active
-                ? "bg-white text-gray-900 font-black shadow-md rounded-xl px-3.5 xl:px-4 py-1.5 lg:py-2 scale-100"
-                : "text-[var(--theme-primary-ink)]/75 hover:text-[var(--theme-primary-ink)] hover:bg-black/10 px-3 xl:px-3.5 py-1.5 lg:py-2 rounded-xl font-bold"
-            }`}
-          >
-            {item.name}
-          </Link>
-        );
-
-      case 6: // Split Statement (Jet black modern squircle)
-      default:
-        return (
-          <Link
-            key={item.name}
-            to={item.href}
-            onClick={handleClick}
-            className={`relative flex items-center text-xs lg:text-sm tracking-tight transition-all duration-200 ease-out cursor-pointer whitespace-nowrap shrink-0 ${
-              active
-                ? "bg-[var(--theme-primary)] text-[var(--theme-primary-ink)] font-black shadow-lg shadow-[var(--theme-primary)]/20 px-3.5 xl:px-4 py-1.5 lg:py-2 rounded-2xl scale-100"
-                : "text-gray-600 hover:text-[var(--theme-primary)] hover:bg-gray-100/90 px-3 xl:px-3.5 py-1.5 lg:py-2 rounded-2xl font-black hover:scale-105 active:scale-95"
-            }`}
-          >
-            {item.name}
-          </Link>
-        );
-    }
-  };
 
   return (
     <>
       <header
         ref={headerRef}
-        className="fixed top-0 left-0 w-full z-40 font-sans transition-all duration-500"
+        className={`fixed top-0 left-0 w-full ${
+          mobileMenuOpen ? "z-50" : "z-40"
+        } bg-[#FAF8F2] select-none`}
       >
-        <nav
-          className={`relative z-20 w-full transition-all duration-500 ${getNavContainerClass()}`}
-        >
-          <div className="mx-auto max-w-[1720px] px-4 sm:px-6 lg:px-8 xl:px-12">
-            <div className="flex items-center justify-between min-h-[46px] sm:min-h-[52px] lg:min-h-[58px]">
-              {/* LEFT: Logo & Mobile Menu */}
-              <div className="flex items-center gap-2.5 sm:gap-4 lg:gap-6 flex-shrink-0 my-auto lg:mr-8 xl:mr-12">
+        {/* ==================== 1. TOP HELPLINE & TEXT-SIZE BAR ==================== */}
+        <div className="bg-[#DDEDEA] text-[#172B2A] py-1.5 sm:py-2 px-2.5 sm:px-6 lg:px-6 xl:px-8 2xl:px-12 border-b border-[#D0E5E0]">
+          <div className="max-w-[1400px] mx-auto flex items-center justify-between min-h-[32px] sm:min-h-[38px] gap-1.5 sm:gap-2">
+            {/* Left: Call to order numbers */}
+            <div className="flex items-center text-xs sm:text-[14px] lg:text-[15px] leading-none min-w-0">
+              <span className="text-[#2C4643] font-normal mr-1.5 sm:mr-3 whitespace-nowrap">
+                <span className="hidden sm:inline">Call to order:</span>
+                <span className="sm:hidden font-medium text-[11px] xs:text-xs">Call:</span>
+              </span>
+              <div className="flex items-center gap-2 sm:gap-4 md:gap-5 whitespace-nowrap">
+                <a
+                  href="tel:+917593875934"
+                  className="font-extrabold text-[#172B2A] hover:text-[#0B6B6B] hover:underline transition-colors tracking-tight whitespace-nowrap text-xs sm:text-sm lg:text-[15px]"
+                >
+                  +91 75938 75934
+                </a>
+                <span className="text-[#88A6A0] hidden md:inline">|</span>
+                <a
+                  href="tel:+919995579398"
+                  className="hidden md:inline font-extrabold text-[#172B2A] hover:text-[#0B6B6B] hover:underline transition-colors tracking-tight whitespace-nowrap text-xs sm:text-sm lg:text-[15px]"
+                >
+                  +91 99955 79398
+                </a>
+              </div>
+            </div>
+
+            {/* Right: Text size buttons: A, A+, A++ */}
+            <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+              <span className="text-[#2C4643] text-xs sm:text-[14px] lg:text-[15px] font-normal leading-none select-none hidden sm:inline">
+                Text size
+              </span>
+              <div className="flex items-center gap-1 sm:gap-2" role="group" aria-label="Font size controls">
+                {/* Button A */}
                 <button
                   type="button"
-                  className={`lg:hidden p-2.5 rounded-xl transition-all duration-300 group my-auto cursor-pointer ${getHamburgerClass()}`}
-                  onClick={() => setMobileMenuOpen(true)}
+                  onClick={() => handleTextSizeChange("normal")}
+                  title="Standard text size (A)"
+                  className={`w-7 h-7 sm:w-9 sm:h-9 rounded-[7px] sm:rounded-[10px] font-bold text-xs sm:text-[15px] inline-flex items-center justify-center leading-none transition-all cursor-pointer ${
+                    textSize === "normal"
+                      ? "bg-[#0B6B6B] text-white border-[1.5px] sm:border-[1.8px] border-[#0B6B6B] shadow-xs"
+                      : "bg-white border-[1.5px] sm:border-[1.8px] border-[#0B6B6B] text-[#0B6B6B] hover:bg-[#DDEDEA]/70"
+                  }`}
                 >
-                  <Bars3Icon className="h-6 w-6" />
+                  A
                 </button>
 
-                {/* Main Logo Brand */}
-                <Link
-                  to="/"
-                  className="flex-shrink-0 flex items-center my-auto group cursor-pointer transition-transform duration-300 hover:scale-[1.01] active:scale-[0.99]"
+                {/* Button A+ */}
+                <button
+                  type="button"
+                  onClick={() => handleTextSizeChange("large")}
+                  title="Large text size (A+)"
+                  className={`min-w-[32px] sm:min-w-[42px] px-1 sm:px-2.5 h-7 sm:h-9 rounded-[7px] sm:rounded-[10px] font-bold text-xs sm:text-[15px] inline-flex items-center justify-center leading-none transition-all cursor-pointer ${
+                    textSize === "large"
+                      ? "bg-[#0B6B6B] text-white border-[1.5px] sm:border-[1.8px] border-[#0B6B6B] shadow-xs"
+                      : "bg-white border-[1.5px] sm:border-[1.8px] border-[#0B6B6B] text-[#0B6B6B] hover:bg-[#DDEDEA]/70"
+                  }`}
                 >
-                  <img
-                    src={logoSrc}
-                    alt={branding.companyName || "Logo"}
-                    className="h-10 sm:h-11 md:h-13 lg:h-15 w-auto max-w-[160px] sm:max-w-[200px] md:max-w-[240px] lg:max-w-[280px] object-contain transition-all duration-300 filter brightness-110 my-auto group-hover:scale-102"
-                  />
-                  {(branding.showCompanyName || branding.showCompanyTagline) && (
-                    <div className="hidden sm:flex items-center pl-1.5">
-                      <div
-                        className={`h-7 sm:h-8 lg:h-9 w-[1.5px] mx-2.5 sm:mx-3 transition-colors duration-300 shrink-0 ${
-                          isDark
-                            ? "bg-white/20"
-                            : isThemeBand
-                            ? "bg-white/25"
-                            : "bg-slate-300/80"
-                        }`}
-                      />
-                      <div className="flex flex-col justify-center text-left min-w-0">
-                        {branding.showCompanyName && branding.companyName && (
-                          <span
-                            className={`text-xs sm:text-sm lg:text-[15px] font-extrabold tracking-wider uppercase leading-none transition-colors duration-300 truncate ${getBrandTitleClass()}`}
-                          >
-                            {branding.companyName}
-                          </span>
-                        )}
-                        {branding.showCompanyTagline && branding.companyTagline && (
-                          <span
-                            className={`text-[9px] sm:text-[10px] lg:text-[11px] tracking-widest uppercase font-semibold leading-tight mt-1 transition-colors duration-300 truncate ${getBrandTaglineClass()}`}
-                          >
-                            {branding.companyTagline}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </Link>
-              </div>
+                  A+
+                </button>
 
-              {/* CENTER: Desktop Navigation Links */}
-              <div className="hidden lg:flex items-center gap-1.5 xl:gap-3">
-                {navigation.map((item) => renderDesktopNavLink(item))}
-              </div>
-
-              {/* RIGHT: Search, Actions & Auth */}
-              <div className="flex items-center gap-2 sm:gap-3 xl:gap-4 flex-shrink-0">
-                {/* Global Search Bar */}
-                <div ref={searchRef} className="relative hidden md:block">
-                  <div className="relative flex items-center">
-                    <MagnifyingGlassIcon
-                      className={`absolute left-3.5 top-1/2 -translate-y-1/2 h-4.5 w-4.5 pointer-events-none transition-colors duration-300 ${
-                        isDark ? "text-white/60" : isThemeBand ? "text-[var(--theme-primary-ink)]/70" : "text-gray-400"
-                      }`}
-                      strokeWidth={2}
-                    />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      onFocus={() => setSearchFocused(true)}
-                      placeholder="Search products & categories..."
-                      className={getSearchInputClass()}
-                    />
-                    {searchLoading && (
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                        <svg
-                          className={`animate-spin h-3.5 w-3.5 ${
-                            isDark ? "text-white" : isThemeBand ? "text-[var(--theme-primary-ink)]" : "text-gray-500"
-                          }`}
-                          fill="none"
-                          viewBox="0 0 24 24"
-                        >
-                          <circle
-                            className="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                          />
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-                          />
-                        </svg>
-                      </div>
-                    )}
-                    {searchQuery && !searchLoading && (
-                      <button
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          setSearchQuery("");
-                          setSearchResults(null);
-                        }}
-                        className={`absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full transition-colors cursor-pointer ${
-                          isDark
-                            ? "hover:bg-white/10 text-zinc-300"
-                            : "hover:bg-black/5 text-gray-500"
-                        }`}
-                      >
-                        <XMarkIcon className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Search Results Dropdown */}
-                  {searchFocused && searchQuery.trim().length >= 2 && (
-                    <div
-                      className={`absolute top-full right-0 mt-2.5 w-80 xl:w-96 rounded-2xl shadow-2xl z-50 max-h-[420px] overflow-y-auto p-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden animate-in fade-in zoom-in-95 duration-200 ${
-                        isDark
-                          ? "bg-zinc-900/98 backdrop-blur-2xl border border-zinc-800 text-white shadow-black/80"
-                          : "bg-white/98 backdrop-blur-2xl border border-gray-200/90 text-gray-900 shadow-black/15"
-                      }`}
-                    >
-                      {searchLoading && (
-                        <div className="flex items-center justify-center gap-2 p-6 text-sm text-gray-500">
-                          <svg
-                            className="animate-spin h-4 w-4"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                          >
-                            <circle
-                              className="opacity-25"
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              stroke="currentColor"
-                              strokeWidth="4"
-                            />
-                            <path
-                              className="opacity-75"
-                              fill="currentColor"
-                              d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-                            />
-                          </svg>
-                          Searching...
-                        </div>
-                      )}
-                      {!searchLoading && searchResults && (
-                        <>
-                          {searchResults.categories.length > 0 && (
-                            <div className="mb-1">
-                              <div
-                                className={`px-3 pt-2 pb-1 text-[10px] uppercase tracking-widest font-bold ${
-                                  isDark ? "text-zinc-400" : "text-gray-400"
-                                }`}
-                              >
-                                Categories
-                              </div>
-                              {searchResults.categories.map((cat) => (
-                                <button
-                                  key={cat.id}
-                                  onMouseDown={() =>
-                                    handleCategoryClick(cat.id)
-                                  }
-                                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-left group/item cursor-pointer ${
-                                    isDark
-                                      ? "hover:bg-white/10 text-zinc-100"
-                                      : "hover:bg-slate-100/90 text-gray-900"
-                                  }`}
-                                >
-                                  <div
-                                    className={`w-9 h-9 rounded-xl overflow-hidden flex-shrink-0 ${
-                                      isDark ? "bg-zinc-800" : "bg-slate-100"
-                                    }`}
-                                  >
-                                    {cat.image ? (
-                                      <img
-                                        src={
-                                          cat.image.startsWith("http")
-                                            ? cat.image
-                                            : `${domainUrl}/${cat.image}`
-                                        }
-                                        alt={cat.name}
-                                        className="w-full h-full object-cover"
-                                      />
-                                    ) : (
-                                      <div className="w-full h-full flex items-center justify-center">
-                                        <CubeIcon className="h-4 w-4 text-gray-400" />
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="text-sm font-bold truncate">
-                                      {cat.name}
-                                    </div>
-                                    <div
-                                      className={`text-xs ${
-                                        isDark
-                                          ? "text-zinc-400"
-                                          : "text-gray-400"
-                                      }`}
-                                    >
-                                      Browse all {cat.name}
-                                    </div>
-                                  </div>
-                                  <svg
-                                    className="h-4 w-4 text-gray-400 group-hover/item:translate-x-0.5 transition-transform flex-shrink-0"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M9 5l7 7-7 7"
-                                    />
-                                  </svg>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-
-                          {searchResults.products.length > 0 && (
-                            <div>
-                              <div
-                                className={`px-3 pt-2 pb-1 text-[10px] uppercase tracking-widest font-bold ${
-                                  isDark ? "text-zinc-400" : "text-gray-400"
-                                }`}
-                              >
-                                Products
-                              </div>
-                              {searchResults.products.map((prod) => (
-                                <button
-                                  key={prod.id}
-                                  onMouseDown={() =>
-                                    handleProductClick(prod.id)
-                                  }
-                                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-left group/item cursor-pointer ${
-                                    isDark
-                                      ? "hover:bg-white/10 text-zinc-100"
-                                      : "hover:bg-slate-100/90 text-gray-900"
-                                  }`}
-                                >
-                                  <div
-                                    className={`w-10 h-10 rounded-xl overflow-hidden flex-shrink-0 ${
-                                      isDark ? "bg-zinc-800" : "bg-slate-100"
-                                    }`}
-                                  >
-                                    {prod.image ? (
-                                      <img
-                                        src={
-                                          prod.image.startsWith("http")
-                                            ? prod.image
-                                            : `${domainUrl}/${prod.image}`
-                                        }
-                                        alt={prod.name}
-                                        className="w-full h-full object-cover"
-                                      />
-                                    ) : (
-                                      <div className="w-full h-full flex items-center justify-center">
-                                        <ShoppingBagIcon className="h-4 w-4 text-gray-400" />
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="text-sm font-bold truncate">
-                                      {prod.name}
-                                    </div>
-                                    <div
-                                      className={`text-xs truncate ${
-                                        isDark
-                                          ? "text-zinc-400"
-                                          : "text-gray-500"
-                                      }`}
-                                    >
-                                      {prod.category?.name} · ₹
-                                      {prod.price?.toLocaleString()}
-                                    </div>
-                                  </div>
-                                  <svg
-                                    className="h-4 w-4 text-gray-400 group-hover/item:translate-x-0.5 transition-transform flex-shrink-0"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M9 5l7 7-7 7"
-                                    />
-                                  </svg>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-
-                          {searchResults.categories.length === 0 &&
-                            searchResults.products.length === 0 && (
-                              <div className="py-10 text-center">
-                                <MagnifyingGlassIcon className="h-8 w-8 text-gray-400 mx-auto mb-3" />
-                                <p
-                                  className={`text-sm ${
-                                    isDark ? "text-zinc-300" : "text-gray-500"
-                                  }`}
-                                >
-                                  No results for{" "}
-                                  <span
-                                    className={`font-medium ${
-                                      isDark ? "text-white" : "text-black"
-                                    }`}
-                                  >
-                                    "{searchQuery}"
-                                  </span>
-                                </p>
-                                <p className="text-gray-400 text-xs mt-1">
-                                  Try a different keyword
-                                </p>
-                              </div>
-                            )}
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Action Icons & Auth */}
-                <div className="flex items-center gap-1 sm:gap-2 lg:gap-3">
-                  {/* Action Icons — visible only when logged in */}
-                  {isAuthenticated && (
-                    <>
-                      {/* Wishlist Icon */}
-                      <button
-                        onClick={handleWishlistClick}
-                        className={getActionButtonClass()}
-                        aria-label="Wishlist"
-                      >
-                        {isActive("/WishlistPage") || isActive("/wishlist") ? (
-                          <HeartSolid
-                            className={`h-5 w-5 lg:h-5.5 lg:w-5.5 transition-colors ${
-                              isDark
-                                ? "text-[var(--theme-primary)]"
-                                : isThemeBand
-                                ? "text-white"
-                                : "text-[var(--theme-primary)]"
-                            }`}
-                          />
-                        ) : (
-                          <HeartOutline className="h-5 w-5 lg:h-5.5 lg:w-5.5 transition-colors" />
-                        )}
-                        {showWishlistBadge && (
-                          <span
-                            className={`absolute -top-1 -right-1 z-10 min-w-[16px] h-[16px] sm:min-w-[18px] sm:h-[18px] text-[9px] sm:text-[10px] font-bold rounded-full flex items-center justify-center px-1 animate-pulse shadow-xs pointer-events-none ${
-                              isThemeBand
-                                ? "bg-white text-gray-900 shadow-md"
-                                : "bg-[var(--theme-primary)] text-[var(--theme-primary-ink)] shadow-[var(--theme-primary)]/30"
-                            }`}
-                          >
-                            {wishlistCount}
-                          </span>
-                        )}
-                      </button>
-
-                      {/* Cart Icon */}
-                      <Link
-                        to="/cart"
-                        onClick={(e) => {
-                          if (!isAuthenticated) {
-                            e.preventDefault();
-                            toast.error("Please login to continue", {
-                              id: "Navbar login to continue",
-                            });
-                            return;
-                          }
-                          handleCartClick();
-                        }}
-                        className={getActionButtonClass()}
-                        aria-label="Cart"
-                      >
-                        {isActive("/cart") ? (
-                          <ShoppingBagSolid
-                            className={`h-5 w-5 lg:h-5.5 lg:w-5.5 transition-colors ${
-                              isDark
-                                ? "text-[var(--theme-primary)]"
-                                : isThemeBand
-                                ? "text-white"
-                                : "text-[var(--theme-primary)]"
-                            }`}
-                          />
-                        ) : (
-                          <ShoppingBagIcon className="h-5 w-5 lg:h-5.5 lg:w-5.5 transition-colors" />
-                        )}
-                        {showCartBadge && (
-                          <span
-                            className={`absolute -top-1 -right-1 z-10 min-w-[16px] h-[16px] sm:min-w-[18px] sm:h-[18px] text-[9px] sm:text-[10px] font-black rounded-full flex items-center justify-center px-1 animate-bounce shadow-xs pointer-events-none ${
-                              isThemeBand
-                                ? "bg-white text-gray-900 shadow-md"
-                                : "bg-[var(--theme-primary)] text-[var(--theme-primary-ink)] shadow-[var(--theme-primary)]/30"
-                            }`}
-                          >
-                            {cartItemCount}
-                          </span>
-                        )}
-                      </Link>
-                    </>
-                  )}
-
-                  {/* Bell notification */}
-                  {isAuthenticated && (
-                    <div ref={notifRef} className="relative flex items-center">
-                      {isAdmin ? (
-                        <button
-                          onClick={() =>
-                            navigate(`${adminDashboardPath}/notifications`)
-                          }
-                          className={getActionButtonClass()}
-                          aria-label="Notifications"
-                        >
-                          <BellIcon className="h-5 w-5 lg:h-5.5 lg:w-5.5 transition-colors" />
-                          {unreadCount > 0 && (
-                            <span
-                              className={`absolute -top-1 -right-1 z-10 min-w-[16px] h-[16px] sm:min-w-[18px] sm:h-[18px] text-[9px] sm:text-[10px] font-bold rounded-full flex items-center justify-center px-0.5 animate-pulse shadow-xs pointer-events-none ${
-                                isThemeBand
-                                  ? "bg-white text-gray-900 font-black"
-                                  : "bg-[var(--theme-primary)] text-[var(--theme-primary-ink)] font-black shadow-[var(--theme-primary)]/30"
-                              }`}
-                            >
-                              {unreadCount > 99 ? "99+" : unreadCount}
-                            </span>
-                          )}
-                        </button>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => setNotifOpen((o) => !o)}
-                            className={getActionButtonClass()}
-                            aria-label="Notifications"
-                          >
-                            {notifOpen ? (
-                              <BellSolid className="h-5 w-5 lg:h-5.5 lg:w-5.5 transition-colors" />
-                            ) : (
-                              <BellIcon className="h-5 w-5 lg:h-5.5 lg:w-5.5 transition-colors" />
-                            )}
-                            {unreadCount > 0 && (
-                              <span
-                                className={`absolute -top-1 -right-1 z-10 min-w-[16px] h-[16px] sm:min-w-[18px] sm:h-[18px] text-[9px] sm:text-[10px] font-bold rounded-full flex items-center justify-center px-0.5 animate-pulse shadow-xs pointer-events-none ${
-                                  isThemeBand
-                                    ? "bg-white text-gray-900 font-black"
-                                    : "bg-[var(--theme-primary)] text-[var(--theme-primary-ink)] font-black shadow-[var(--theme-primary)]/30"
-                                }`}
-                              >
-                                {unreadCount > 99 ? "99+" : unreadCount}
-                              </span>
-                            )}
-                          </button>
-
-                          {/* Dropdown panel */}
-                          {notifOpen && (
-                            <div
-                              className={`absolute top-full right-0 mt-2 w-80 max-w-[calc(100vw-1rem)] rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200 ${
-                                isDark
-                                  ? "bg-zinc-900/98 backdrop-blur-2xl border border-zinc-800 text-white shadow-black/80"
-                                  : "bg-white/98 backdrop-blur-2xl border border-gray-200/90 text-gray-900 shadow-black/15"
-                              }`}
-                            >
-                              <div
-                                className={`flex items-center justify-between px-4 py-3 border-b ${
-                                  isDark
-                                    ? "border-zinc-800"
-                                    : "border-gray-100"
-                                }`}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <h3 className="font-semibold text-sm">
-                                    Notifications
-                                  </h3>
-                                  {unreadCount > 0 && (
-                                    <span className="text-xs bg-rose-500/10 text-rose-500 rounded-full px-2.5 py-0.5 font-semibold border border-rose-500/10">
-                                      {unreadCount} new
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2.5">
-                                  {unreadCount > 0 && (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        markAllUserRead();
-                                      }}
-                                      className="text-xs font-semibold text-rose-500 hover:text-rose-600 hover:underline cursor-pointer transition-colors"
-                                    >
-                                      Mark all read
-                                    </button>
-                                  )}
-                                  {userNotifications.length > 0 && (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        clearAllUserNotifications();
-                                      }}
-                                      className="text-xs text-gray-400 hover:text-rose-500 hover:underline cursor-pointer transition-colors"
-                                    >
-                                      Clear all
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div
-                                className={`max-h-80 overflow-y-auto divide-y ${
-                                  isDark
-                                    ? "divide-zinc-800/80"
-                                    : "divide-gray-100"
-                                }`}
-                              >
-                                {userNotifications.length === 0 ? (
-                                  <p className="text-center text-sm text-gray-400 py-10">
-                                    No notifications yet
-                                  </p>
-                                ) : (
-                                  userNotifications.map((n) => {
-                                      const id = n.id ?? n._id;
-                                      return (
-                                        <div
-                                          key={id}
-                                          className={`w-full text-left px-4 py-3 transition-colors flex items-start justify-between gap-2 group cursor-pointer ${
-                                            !n.isRead
-                                              ? isDark
-                                                ? "bg-white/5 hover:bg-white/10"
-                                                : "bg-slate-50 hover:bg-slate-100"
-                                              : isDark
-                                              ? "hover:bg-white/5"
-                                              : "hover:bg-slate-50"
-                                          }`}
-                                          onClick={() => {
-                                            if (!n.isRead && id)
-                                              markAsRead(id);
-                                            setNotifOpen(false);
-                                            navigate(
-                                              getCustomerNotificationTarget(n)
-                                            );
-                                          }}
-                                        >
-                                          <div className="flex items-start gap-2.5 flex-1 min-w-0">
-                                            {!n.isRead && (
-                                              <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-rose-500" />
-                                            )}
-                                            <div
-                                              className={
-                                                n.isRead ? "pl-4" : ""
-                                              }
-                                            >
-                                              <p
-                                                className={`text-sm leading-snug line-clamp-2 ${
-                                                  !n.isRead
-                                                    ? "font-semibold"
-                                                    : isDark
-                                                    ? "text-zinc-400"
-                                                    : "text-gray-600"
-                                                }`}
-                                              >
-                                                {n.message}
-                                              </p>
-                                              {n.createdAt && (
-                                                <p className="text-xs text-gray-400 mt-0.5">
-                                                  {new Date(
-                                                    n.createdAt
-                                                  ).toLocaleString("en-IN", {
-                                                    day: "numeric",
-                                                    month: "short",
-                                                    hour: "2-digit",
-                                                    minute: "2-digit",
-                                                  })}
-                                                </p>
-                                              )}
-                                            </div>
-                                          </div>
-                                          {id && (
-                                            <button
-                                              type="button"
-                                              title="Delete notification"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                deleteUserNotification(id);
-                                              }}
-                                              className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-rose-500 rounded transition-all shrink-0 cursor-pointer"
-                                            >
-                                              <XMarkIcon className="h-3.5 w-3.5" />
-                                            </button>
-                                          )}
-                                        </div>
-                                      );
-                                    })
-                                )}
-                              </div>
-
-                              {userNotifications.length > 0 && (
-                                <div
-                                  className={`border-t px-4 py-2.5 ${
-                                    isDark
-                                      ? "border-zinc-800 bg-zinc-950/40"
-                                      : "border-gray-100 bg-gray-50/50"
-                                  }`}
-                                >
-                                  <Link
-                                    to="/myorders"
-                                    onClick={() => setNotifOpen(false)}
-                                    className={`text-xs transition-colors font-medium ${
-                                      isDark
-                                        ? "text-white hover:underline"
-                                        : "text-gray-700 hover:text-black"
-                                    }`}
-                                  >
-                                    View My Orders →
-                                  </Link>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Auth Section */}
-                  {!isAuthenticated ? (
-                    <div className="hidden md:flex items-center gap-3 ml-2">
-                      <button
-                        onClick={() => setCustomerAuthOpen(true)}
-                        className={getSignInButtonClass()}
-                      >
-                        Sign In
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="relative">
-                      <button
-                        onClick={handleUserIconClick}
-                        className={`hidden md:flex items-center gap-2 ml-1 lg:ml-2 border transition-all duration-300 group cursor-pointer ${getAccountButtonClass()}`}
-                      >
-                        <div
-                          className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${
-                            isDark
-                              ? "bg-white/20 text-white"
-                              : isThemeBand
-                              ? "bg-white text-gray-900"
-                              : "bg-gray-900 text-white"
-                          }`}
-                        >
-                          <UserIcon className="h-4 w-4" />
-                        </div>
-                        <span className="text-xs font-bold tracking-tight hidden lg:inline">
-                          {isAdmin ? "Admin" : "Account"}
-                        </span>
-                        <ChevronDownIcon
-                          className={`h-3.5 w-3.5 transition-transform duration-300 ${
-                            isUserDropdownOpen ? "rotate-180" : ""
-                          }`}
-                        />
-                      </button>
-
-                      {/* User Dropdown */}
-                      {isUserDropdownOpen && (
-                        <div
-                          className={`absolute top-full right-0 mt-2.5 w-56 rounded-2xl shadow-2xl p-1.5 z-50 animate-in fade-in zoom-in-95 duration-200 ${
-                            isDark
-                              ? "bg-zinc-900/98 backdrop-blur-2xl border border-zinc-800 text-white shadow-black/70"
-                              : "bg-white/98 backdrop-blur-2xl border border-gray-200/90 text-gray-900 shadow-black/15"
-                          }`}
-                        >
-                          <div
-                            className={`px-3 py-2 mb-1 rounded-xl border ${
-                              isDark
-                                ? "bg-zinc-800/80 border-zinc-700/60 text-zinc-300"
-                                : "bg-slate-50 border-slate-100 text-slate-700"
-                            }`}
-                          >
-                            <p className="text-[10px] font-bold uppercase tracking-wider opacity-60">
-                              Signed in as
-                            </p>
-                            <p className="text-xs font-bold truncate">
-                              {isAdmin ? "Administrator" : "Customer Account"}
-                            </p>
-                          </div>
-                          <Link
-                            to="/profile"
-                            onClick={() => setIsUserDropdownOpen(false)}
-                            className={`flex items-center gap-3 px-3 py-2.5 text-xs font-bold rounded-xl transition-all duration-200 ${
-                              isDark
-                                ? "text-zinc-200 hover:text-white hover:bg-white/10"
-                                : "text-gray-700 hover:text-black hover:bg-slate-100"
-                            }`}
-                          >
-                            <UserIcon className="h-4 w-4 opacity-70" />
-                            My Profile
-                          </Link>
-                          <div
-                            className={`border-t my-1 ${
-                              isDark ? "border-zinc-800" : "border-slate-100"
-                            }`}
-                          />
-                          <button
-                            onClick={() => {
-                              if (handleLogout) {
-                                handleLogout();
-                              } else {
-                                logout();
-                              }
-                              setIsUserDropdownOpen(false);
-                            }}
-                            className="flex items-center gap-3 w-full px-3 py-2.5 text-xs font-bold rounded-xl transition-all duration-200 cursor-pointer text-rose-500 hover:text-rose-600 hover:bg-rose-500/10"
-                          >
-                            <svg
-                              className="h-4 w-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth="2"
-                                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                              />
-                            </svg>
-                            Logout
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                {/* Button A++ */}
+                <button
+                  type="button"
+                  onClick={() => handleTextSizeChange("xlarge")}
+                  title="Default text size (A++)"
+                  className={`min-w-[36px] sm:min-w-[50px] px-1 sm:px-2.5 h-7 sm:h-9 rounded-[7px] sm:rounded-[10px] font-bold text-xs sm:text-[15px] inline-flex items-center justify-center leading-none transition-all cursor-pointer ${
+                    textSize === "xlarge"
+                      ? "bg-[#0B6B6B] text-white border-[1.5px] sm:border-[1.8px] border-[#0B6B6B] shadow-xs"
+                      : "bg-white border-[1.5px] sm:border-[1.8px] border-[#0B6B6B] text-[#0B6B6B] hover:bg-[#DDEDEA]/70"
+                  }`}
+                >
+                  A++
+                </button>
               </div>
             </div>
           </div>
-        </nav>
+        </div>
 
-        {/* Category browse bar — homepage only */}
-        {location.pathname === "/" && <CategoryMegaMenu />}
-
-        {/* MOBILE MENU DRAWER */}
-        <Dialog
-          open={mobileMenuOpen}
-          onClose={setMobileMenuOpen}
-          className="relative z-[100] lg:hidden"
-        >
-          <DialogBackdrop className="fixed inset-0 bg-black/50 backdrop-blur-md transition-opacity duration-300 z-[100]" />
-          <div className="fixed inset-0 z-[100] flex">
-            <DialogPanel
-              className={`relative mr-auto flex h-full w-[300px] max-w-[85vw] flex-col overflow-y-auto backdrop-blur-2xl shadow-2xl transition-transform duration-300 border-r ${
-                isDark
-                  ? "bg-zinc-950/98 border-zinc-800 text-white"
-                  : "bg-white/98 border-gray-200 text-gray-900"
-              }`}
-            >
-              {/* Header */}
-              <div
-                className={`px-5 py-4 border-b flex items-center justify-between ${
-                  isDark ? "border-zinc-800" : "border-gray-100"
-                }`}
+        {/* ==================== 2. MAIN LOGO & NAVIGATION HEADER ==================== */}
+        <div className="bg-[#FAF8F2] border-b border-[#E6DFD5]">
+          <div className="max-w-[1400px] mx-auto px-2.5 sm:px-4 lg:px-4 xl:px-8 2xl:px-12">
+            <div className="flex items-center justify-between h-16 sm:h-20 lg:h-20 gap-2 lg:gap-2.5 xl:gap-6 2xl:gap-8">
+              {/* Left: Brand Logo & Title */}
+              <Link
+                to="/"
+                className="flex items-center gap-1.5 sm:gap-2 xl:gap-3 group focus:outline-none shrink-0"
+                aria-label="Panakkal Ayurveda Pharmacy Home"
               >
-                <Link
-                  to="/"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center group cursor-pointer"
-                >
-                  <img
-                    src={logoSrc}
-                    alt={branding.companyName || "Logo"}
-                    className="h-9 sm:h-10 w-auto max-w-[140px] object-contain filter brightness-110"
-                  />
-                  {(branding.showCompanyName || branding.showCompanyTagline) && (
-                    <div className="flex items-center pl-1">
-                      <div className={`h-6 w-[1px] mx-2.5 shrink-0 ${isDark ? "bg-white/20" : "bg-slate-200"}`} />
-                      <div className="flex flex-col justify-center text-left min-w-0">
-                        {branding.showCompanyName && branding.companyName && (
-                          <span
-                            className={`text-xs font-bold uppercase tracking-wider leading-none truncate ${
-                              isDark ? "text-white" : "text-gray-900"
-                            }`}
-                          >
-                            {branding.companyName}
-                          </span>
-                        )}
-                        {branding.showCompanyTagline && branding.companyTagline && (
-                          <span
-                            className={`text-[9px] tracking-wider uppercase font-medium leading-tight mt-1 truncate ${
-                              isDark ? "text-zinc-400" : "text-gray-500"
-                            }`}
-                          >
-                            {branding.companyTagline}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </Link>
-                <button
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`p-2 rounded-xl transition-colors cursor-pointer ${
-                    isDark
-                      ? "bg-zinc-900 hover:bg-zinc-800 text-zinc-300"
-                      : "bg-gray-100 hover:bg-gray-200 text-gray-700"
-                  }`}
-                >
-                  <XMarkIcon className="h-5 w-5" />
-                </button>
-              </div>
+                <img
+                  src={panakkalLogo}
+                  alt="Panakkal Ayurveda Pharmacy"
+                  className="h-7.5 xs:h-8.5 sm:h-10 lg:h-10 xl:h-12 w-auto object-contain shrink-0"
+                />
+                <span className="font-body font-bold text-[9.5px] min-[360px]:text-[11px] xs:text-[12.5px] sm:text-[13px] lg:text-[12.5px] xl:text-[15.5px] 2xl:text-[16px] tracking-tight sm:tracking-[0.03em] xl:tracking-[0.06em] text-[#1E2827] uppercase leading-tight select-none whitespace-nowrap">
+                  PANAKKAL AYURVEDA PHARMACY
+                </span>
+              </Link>
 
-              {/* Navigation Links */}
-              <div className="flex-1 px-2 py-4">
-                {/* Mobile Search */}
-                <div className="mx-2 mb-3">
-                  <div className="relative">
-                    <MagnifyingGlassIcon
-                      className={`absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none ${
-                        isDark ? "text-zinc-400" : "text-gray-400"
-                      }`}
-                    />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      onFocus={() => setSearchFocused(true)}
-                      placeholder="Search products & categories..."
-                      className={`w-full pl-9 pr-8 py-2.5 rounded-xl text-xs focus:outline-none transition-colors ${
-                        isDark
-                          ? "bg-zinc-900 border border-zinc-800 text-white placeholder-zinc-500 focus:border-white/30"
-                          : "bg-gray-100 border border-gray-200 text-gray-900 placeholder-gray-400 focus:bg-white focus:border-gray-400"
-                      }`}
-                    />
-                    {searchQuery && (
-                      <button
-                        onClick={() => {
-                          setSearchQuery("");
-                          setSearchResults(null);
-                        }}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer"
-                      >
-                        <XMarkIcon className="h-3.5 w-3.5 text-gray-400" />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Mobile search results */}
-                  {searchQuery.trim().length >= 2 &&
-                    (searchLoading || searchResults) && (
-                      <div
-                        className={`mt-2 rounded-xl shadow-xl max-h-64 overflow-y-auto p-1.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${
-                          isDark
-                            ? "bg-zinc-900 border border-zinc-800 text-white"
-                            : "bg-white border border-gray-200 text-gray-900"
-                        }`}
-                      >
-                        {searchLoading && (
-                          <div className="p-3 text-center text-gray-400 text-xs">
-                            Searching...
-                          </div>
-                        )}
-                        {!searchLoading && searchResults && (
-                          <>
-                            {[
-                              ...searchResults.categories.map((c) => ({
-                                type: "category" as const,
-                                ...c,
-                              })),
-                              ...searchResults.products.map((p) => ({
-                                type: "product" as const,
-                                ...p,
-                              })),
-                            ].length === 0 ? (
-                              <div className="p-4 text-center text-gray-400 text-xs">
-                                No results found
-                              </div>
-                            ) : (
-                              <>
-                                {searchResults.categories.map((cat) => (
-                                  <button
-                                    key={cat.id}
-                                    onClick={() => {
-                                      handleCategoryClick(cat.id);
-                                      setMobileMenuOpen(false);
-                                    }}
-                                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors text-left cursor-pointer ${
-                                      isDark
-                                        ? "hover:bg-white/10 text-zinc-100"
-                                        : "hover:bg-gray-100 text-gray-900"
-                                    }`}
-                                  >
-                                    <div
-                                      className={`w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 ${
-                                        isDark ? "bg-zinc-800" : "bg-gray-100"
-                                      }`}
-                                    >
-                                      {cat.image ? (
-                                        <img
-                                          src={
-                                            cat.image.startsWith("http")
-                                              ? cat.image
-                                              : `${domainUrl}/${cat.image}`
-                                          }
-                                          alt={cat.name}
-                                          className="w-full h-full object-cover"
-                                        />
-                                      ) : (
-                                        <CubeIcon className="h-4 w-4 text-gray-400 m-auto mt-2" />
-                                      )}
-                                    </div>
-                                    <div>
-                                      <div className="text-xs font-bold">
-                                        {cat.name}
-                                      </div>
-                                      <div className="text-[10px] text-gray-400">
-                                        Category
-                                      </div>
-                                    </div>
-                                  </button>
-                                ))}
-                                {searchResults.products.map((prod) => (
-                                  <button
-                                    key={prod.id}
-                                    onClick={() => {
-                                      handleProductClick(prod.id);
-                                      setMobileMenuOpen(false);
-                                    }}
-                                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors text-left cursor-pointer ${
-                                      isDark
-                                        ? "hover:bg-white/10 text-zinc-100"
-                                        : "hover:bg-gray-100 text-gray-900"
-                                    }`}
-                                  >
-                                    <div
-                                      className={`w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 ${
-                                        isDark ? "bg-zinc-800" : "bg-gray-100"
-                                      }`}
-                                    >
-                                      {prod.image ? (
-                                        <img
-                                          src={
-                                            prod.image.startsWith("http")
-                                              ? prod.image
-                                              : `${domainUrl}/${prod.image}`
-                                          }
-                                          alt={prod.name}
-                                          className="w-full h-full object-cover"
-                                        />
-                                      ) : (
-                                        <ShoppingBagIcon className="h-4 w-4 text-gray-400 m-auto mt-2" />
-                                      )}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="text-xs font-bold truncate">
-                                        {prod.name}
-                                      </div>
-                                      <div className="text-[10px] text-gray-500">
-                                        ₹{prod.price?.toLocaleString()}
-                                      </div>
-                                    </div>
-                                  </button>
-                                ))}
-                              </>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    )}
-                </div>
-
-                <div className="space-y-1">
-                  {navigation.map((item) => {
-                    const Icon = item.icon;
-                    const active = !item.isAction && isActive(item.href);
-                    return (
-                      <Link
-                        key={item.name}
-                        to={item.href}
-                        onClick={(e) => {
-                          if (item.isAction && item.onClick) {
-                            item.onClick(e);
-                          } else if (item.protected && !isAuthenticated) {
-                            handleGatedNavigation(e, item.href, true);
-                          }
-                          setMobileMenuOpen(false);
-                        }}
-                        className={`flex items-center gap-3 px-3.5 py-3 rounded-xl transition-all duration-200 mx-2 text-xs font-bold ${
-                          active
-                            ? "bg-[var(--theme-primary)] text-[var(--theme-primary-ink)] font-bold shadow-md shadow-[var(--theme-primary)]/20"
-                            : isDark
-                            ? "text-zinc-300 hover:text-[var(--theme-primary)] hover:bg-white/10"
-                            : "text-gray-700 hover:text-[var(--theme-primary)] hover:bg-gray-100"
-                        }`}
-                      >
-                        <Icon
-                          className={`h-4 w-4 ${
-                            active
-                              ? "text-[var(--theme-primary-ink)]"
-                              : isDark
-                              ? "text-zinc-400"
-                              : "text-gray-500"
-                          }`}
-                        />
-                        {item.name}
-                      </Link>
-                    );
-                  })}
-                  {isAuthenticated && (
-                    <Link
-                      to="/myorders"
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={`flex items-center gap-3 px-3.5 py-3 rounded-xl transition-all duration-200 mx-2 text-xs font-bold ${
-                        isDark
-                          ? "text-zinc-300 hover:text-[var(--theme-primary)] hover:bg-white/10"
-                          : "text-gray-700 hover:text-[var(--theme-primary)] hover:bg-gray-100"
-                      }`}
+              {/* Right: Navigation Links + Cart Button + Customer Login/Account */}
+              <div className="hidden lg:flex items-center gap-2 lg:gap-2.5 xl:gap-4 2xl:gap-6 shrink-0">
+                {/* Navigation Anchor Links */}
+                <nav className="flex items-center gap-1.5 lg:gap-2 xl:gap-3.5 2xl:gap-5" aria-label="Main Navigation">
+                  {navLinks.map((link) => (
+                    <a
+                      key={link.name}
+                      href={`#${link.href}`}
+                      onClick={(e) => handleNavClick(e, link.href)}
+                      className="font-bold text-[12px] lg:text-[12px] xl:text-[14px] 2xl:text-[15px] text-[#172B2A] hover:text-[#0B6B6B] transition-colors py-1 cursor-pointer whitespace-nowrap shrink-0"
                     >
-                      <BellIcon
-                        className={`h-4 w-4 ${
-                          isDark ? "text-zinc-400" : "text-gray-500"
-                        }`}
-                      />
-                      Notifications
-                      {unreadCount > 0 && (
-                        <span
-                          className={`ml-auto min-w-[20px] h-[20px] text-[10px] font-bold rounded-full flex items-center justify-center px-1 ${
-                            isDark
-                              ? "bg-[var(--theme-primary)] text-[var(--theme-primary-ink)]"
-                              : "bg-[var(--theme-primary)] text-[var(--theme-primary-ink)]"
-                          }`}
-                        >
-                          {unreadCount}
-                        </span>
-                      )}
-                    </Link>
-                  )}
-                </div>
-              </div>
+                      {link.name}
+                    </a>
+                  ))}
+                </nav>
 
-              {/* Auth Section */}
-              <div
-                className={`px-4 py-4 border-t ${
-                  isDark ? "border-zinc-800" : "border-gray-100"
-                }`}
-              >
+                {/* Cart Button: Only shown when logged in */}
+                {isAuthenticated && (
+                  <Link
+                    to="/cart"
+                    className="flex items-center gap-1.5 xl:gap-2 bg-white hover:bg-[#F3EFE7] border-[1.5px] sm:border-[1.8px] border-[#172B2A] text-[#172B2A] px-2 lg:px-2.5 xl:px-3.5 py-1.5 xl:py-2 rounded-[10px] xl:rounded-[14px] transition-colors shadow-xs group shrink-0 whitespace-nowrap"
+                    aria-label={`Shopping cart with ${totalCartCount} items`}
+                  >
+                    {/* Shopping cart wireframe icon */}
+                    <svg
+                      className="w-4 h-4 xl:w-5 xl:h-5 text-[#172B2A] stroke-[#172B2A] shrink-0"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <circle cx="9" cy="20" r="1.3" fill="#172B2A" />
+                      <circle cx="18" cy="20" r="1.3" fill="#172B2A" />
+                      <path d="M2.5 3.5h3l2.4 11.2a1.8 1.8 0 0 0 1.8 1.4h8.8a1.8 1.8 0 0 0 1.8-1.4l1.5-7.5H6.5" />
+                    </svg>
+
+                    {/* Cart Text */}
+                    <span className="font-bold text-[12px] lg:text-[12px] xl:text-[14px] text-[#172B2A]">
+                      Cart
+                    </span>
+
+                    {/* Circular count badge in dark teal #0B6B6B */}
+                    <span className="min-w-[17px] h-[17px] xl:w-5 xl:h-5 rounded-full bg-[#0B6B6B] text-white text-[10px] xl:text-[11px] font-bold flex items-center justify-center leading-none px-1 shrink-0">
+                      {totalCartCount}
+                    </span>
+                  </Link>
+                )}
+
+                {/* Customer Account / Sign In Icon Button */}
                 {!isAuthenticated ? (
-                  <div className="space-y-2">
-                    <button
-                      onClick={() => {
-                        setMobileMenuOpen(false);
-                        setCustomerAuthOpen(true);
-                      }}
-                      className={`block w-full text-center py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 shadow-md cursor-pointer ${
-                        isDark
-                          ? "bg-[var(--theme-primary)] text-[var(--theme-primary-ink)] hover:bg-[var(--theme-primary-hover)]"
-                          : isThemeBand
-                          ? "bg-white text-gray-900 hover:bg-gray-100"
-                          : "bg-[var(--theme-primary)] text-[var(--theme-primary-ink)] hover:bg-[var(--theme-primary-hover)]"
-                      }`}
+                  <button
+                    type="button"
+                    onClick={() => setCustomerAuthOpen(true)}
+                    className="flex items-center gap-1.5 xl:gap-2 bg-white hover:bg-[#F3EFE7] border-[1.5px] sm:border-[1.8px] border-[#172B2A] text-[#172B2A] px-2 lg:px-2.5 xl:px-3.5 py-1.5 xl:py-2 rounded-[10px] xl:rounded-[14px] transition-colors shadow-xs group shrink-0 cursor-pointer font-bold text-[12px] lg:text-[12px] xl:text-[14px] whitespace-nowrap"
+                    aria-label="Sign In"
+                  >
+                    <svg
+                      className="w-4 h-4 xl:w-5 xl:h-5 text-[#172B2A] stroke-[#172B2A] shrink-0"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
                     >
-                      Sign In
-                    </button>
-                  </div>
+                      <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                      <circle cx="12" cy="7" r="4" />
+                    </svg>
+                    <span>Sign In</span>
+                  </button>
                 ) : (
-                  <div className="space-y-2">
-                    <Link
-                      to="/profile"
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={`flex items-center justify-center gap-2 w-full text-center py-3 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
-                        isDark
-                          ? "bg-zinc-900 hover:bg-zinc-800 text-white border border-zinc-800"
-                          : "bg-gray-100 hover:bg-gray-200 text-gray-900"
-                      }`}
-                    >
-                      <UserIcon
-                        className={`h-4 w-4 ${
-                          isDark ? "text-zinc-300" : "text-gray-600"
-                        }`}
-                      />
-                      My Profile
-                    </Link>
+                  <div className="relative shrink-0" ref={userDropdownRef}>
                     <button
-                      onClick={() => {
-                        if (handleLogout) {
-                          handleLogout();
-                        } else {
-                          logout();
-                        }
-                        setMobileMenuOpen(false);
-                      }}
-                      className="flex items-center justify-center gap-2 w-full text-center bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 py-3 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                      type="button"
+                      onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
+                      className="flex items-center gap-1.5 xl:gap-2 bg-white hover:bg-[#F3EFE7] border-[1.5px] sm:border-[1.8px] border-[#172B2A] text-[#172B2A] px-2 lg:px-2.5 xl:px-3.5 py-1.5 xl:py-2 rounded-[10px] xl:rounded-[14px] transition-colors shadow-xs group shrink-0 cursor-pointer font-bold text-[12px] lg:text-[12px] xl:text-[14px] whitespace-nowrap"
+                      aria-label="User Account Menu"
                     >
-                      <svg
-                        className="h-4 w-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
+                      <div className="w-4 h-4 xl:w-5 xl:h-5 rounded-full bg-[#0B6B6B] text-white flex items-center justify-center text-xs font-bold shrink-0">
+                        <svg
+                          className="w-3 xl:w-3.5 h-3 xl:h-3.5 text-white stroke-white"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          strokeWidth="2.2"
                           strokeLinecap="round"
                           strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                        />
+                        >
+                          <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                          <circle cx="12" cy="7" r="4" />
+                        </svg>
+                      </div>
+                      <span>{isAdmin ? "Admin" : "Account"}</span>
+                      <svg
+                        className={`w-3.5 h-3.5 xl:w-4 xl:h-4 text-[#172B2A] transition-transform duration-200 shrink-0 ${
+                          isUserDropdownOpen ? "rotate-180" : ""
+                        }`}
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <polyline points="6 9 12 15 18 9" />
                       </svg>
-                      Logout
                     </button>
+
+                    {/* User Dropdown Menu */}
+                    {isUserDropdownOpen && (
+                      <div className="absolute right-0 mt-2 w-52 bg-[#FAF8F2] border border-[#E6DFD5] rounded-2xl shadow-xl p-2 z-50 animate-in fade-in zoom-in-95 duration-150">
+                        <div className="px-3 py-2 border-b border-[#E6DFD5] mb-1">
+                          <p className="text-[11px] font-bold uppercase tracking-wider text-[#34504D]">
+                            Signed in as
+                          </p>
+                          <p className="text-xs font-bold text-[#172B2A] truncate">
+                            {isAdmin ? "Administrator" : "Customer Account"}
+                          </p>
+                        </div>
+                        <Link
+                          to="/profile"
+                          onClick={() => setIsUserDropdownOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-[#172B2A] hover:bg-[#DDEDEA] hover:text-[#0B6B6B] rounded-xl transition-colors"
+                        >
+                          <svg className="w-4 h-4 text-[#0B6B6B]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                          My Profile
+                        </Link>
+                        <Link
+                          to="/myorders"
+                          onClick={() => setIsUserDropdownOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-[#172B2A] hover:bg-[#DDEDEA] hover:text-[#0B6B6B] rounded-xl transition-colors"
+                        >
+                          <svg className="w-4 h-4 text-[#0B6B6B]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                          My Orders
+                        </Link>
+                        <Link
+                          to="/WishlistPage"
+                          onClick={() => setIsUserDropdownOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-[#172B2A] hover:bg-[#DDEDEA] hover:text-[#0B6B6B] rounded-xl transition-colors"
+                        >
+                          <svg className="w-4 h-4 text-[#0B6B6B]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                          My Wishlist
+                        </Link>
+                        <div className="border-t border-[#E6DFD5] my-1" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsUserDropdownOpen(false);
+                            if (handleLogoutProp) {
+                              handleLogoutProp();
+                            } else {
+                              authContextLogout();
+                            }
+                          }}
+                          className="flex items-center gap-2.5 w-full text-left px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                        >
+                          <svg className="w-4 h-4 text-rose-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                          Logout
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            </DialogPanel>
+
+              {/* Mobile Controls (Cart Button + User Icon + Hamburger Toggle) */}
+              <div className="flex lg:hidden items-center gap-1 sm:gap-2 shrink-0 ml-auto">
+                {isAuthenticated && (
+                  <Link
+                    to="/cart"
+                    className="flex items-center gap-1 sm:gap-1.5 bg-white border-[1.5px] sm:border-[1.8px] border-[#172B2A] text-[#172B2A] px-1.5 sm:px-2.5 py-1.5 rounded-[10px] sm:rounded-[12px] shadow-2xs hover:bg-[#F3EFE7] transition-colors shrink-0"
+                    aria-label="View Cart"
+                  >
+                    <svg
+                      className="w-4 h-4 text-[#172B2A] stroke-[#172B2A] shrink-0"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <circle cx="9" cy="20" r="1.3" fill="#172B2A" />
+                      <circle cx="18" cy="20" r="1.3" fill="#172B2A" />
+                      <path d="M2.5 3.5h3l2.4 11.2a1.8 1.8 0 0 0 1.8 1.4h8.8a1.8 1.8 0 0 0 1.8-1.4l1.5-7.5H6.5" />
+                    </svg>
+                    <span className="font-bold text-xs hidden xs:inline">Cart</span>
+                    <span className="min-w-[17px] h-[17px] px-1 rounded-full bg-[#0B6B6B] text-white text-[10px] font-bold flex items-center justify-center leading-none shrink-0">
+                      {totalCartCount}
+                    </span>
+                  </Link>
+                )}
+
+                {/* Mobile User Icon Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isAuthenticated) {
+                      navigate("/profile");
+                    } else {
+                      setCustomerAuthOpen(true);
+                    }
+                  }}
+                  className="flex items-center justify-center w-7.5 h-7.5 sm:w-8.5 sm:h-8.5 bg-white border-[1.5px] sm:border-[1.8px] border-[#172B2A] text-[#172B2A] rounded-[10px] sm:rounded-[12px] hover:bg-[#F3EFE7] cursor-pointer transition-colors shrink-0"
+                  aria-label={isAuthenticated ? "Account profile" : "Sign in"}
+                >
+                  <svg
+                    className="w-4 h-4 text-[#172B2A] stroke-[#172B2A]"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                  </svg>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                  className="p-1 sm:p-1.5 rounded-lg text-[#172B2A] hover:bg-[#DDEDEA] focus:outline-none cursor-pointer shrink-0"
+                  aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+                >
+                  {mobileMenuOpen ? (
+                    <XMarkIcon className="w-5.5 h-5.5 sm:w-6 sm:h-6 stroke-[2.5]" />
+                  ) : (
+                    <Bars3Icon className="w-5.5 h-5.5 sm:w-6 sm:h-6 stroke-[2.5]" />
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
-        </Dialog>
+        </div>
+
+        {/* ==================== 3. MOBILE MENU ==================== */}
+        {mobileMenuOpen && (
+          <div className="lg:hidden bg-[#FAF8F2] border-b border-[#E6DFD5] px-5 py-4 space-y-4 shadow-xl min-h-[calc(100dvh-95px)] overflow-y-auto overscroll-contain pb-16 flex flex-col justify-start">
+            <nav className="flex flex-col space-y-1">
+              {navLinks.map((link) => (
+                <a
+                  key={link.name}
+                  href={`#${link.href}`}
+                  onClick={(e) => handleNavClick(e, link.href)}
+                  className="font-bold text-[16px] text-[#172B2A] hover:text-[#0B6B6B] hover:bg-[#DDEDEA]/50 px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
+                >
+                  {link.name}
+                </a>
+              ))}
+            </nav>
+
+            {/* Mobile Auth Controls */}
+            <div className="pt-3 border-t border-[#E6DFD5]">
+              {!isAuthenticated ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setCustomerAuthOpen(true);
+                  }}
+                  className="w-full py-2.5 bg-[#0B6B6B] hover:bg-[#084E4E] text-white text-sm font-bold rounded-xl transition-colors text-center shadow-xs cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                  <span>Sign In / Register</span>
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <Link
+                    to="/profile"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-sm font-bold text-[#172B2A] bg-white border border-[#E6DFD5] rounded-xl hover:bg-[#DDEDEA]/50"
+                  >
+                    <svg className="w-4 h-4 text-[#0B6B6B]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                    My Profile
+                  </Link>
+                  <Link
+                    to="/myorders"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-sm font-bold text-[#172B2A] bg-white border border-[#E6DFD5] rounded-xl hover:bg-[#DDEDEA]/50"
+                  >
+                    <svg className="w-4 h-4 text-[#0B6B6B]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                    My Orders
+                  </Link>
+                  <Link
+                    to="/WishlistPage"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-sm font-bold text-[#172B2A] bg-white border border-[#E6DFD5] rounded-xl hover:bg-[#DDEDEA]/50"
+                  >
+                    <svg className="w-4 h-4 text-[#0B6B6B]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                    My Wishlist
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      if (handleLogoutProp) handleLogoutProp();
+                      else authContextLogout();
+                    }}
+                    className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-sm font-bold text-rose-600 bg-rose-50 border border-rose-100 rounded-xl hover:bg-rose-100/70 cursor-pointer"
+                  >
+                    <svg className="w-4 h-4 text-rose-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    Logout
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </header>
 
-      <TrackShippingModal
-        isOpen={trackShippingOpen}
-        onClose={() => setTrackShippingOpen(false)}
-        initialPartners={trackingNavConfig.enabledPartners}
-      />
-
+      {/* Customer Authentication Modal (Phone OTP Login & Registration) */}
       <CustomerAuthModal
         open={customerAuthOpen}
         onClose={() => setCustomerAuthOpen(false)}

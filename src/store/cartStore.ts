@@ -32,7 +32,7 @@ interface CartState {
 export const useCartStore = create<CartState>((set) => ({
   items: [],
   total: "0.00",
-  loading: true,
+  loading: false,
 
   setItems: (items, total) => set({ items, total }),
   setLoading: (loading) => set({ loading }),

@@ -25,6 +25,7 @@ import { normalizeProduct, calculateDiscountedPrice } from "../utils/product";
 import AttributeFilterPanel, {
   type ActiveFilters as DynFilters,
   type AttributeFilterPanelHandle,
+  type FilterAttribute,
 } from "../components/AttributeFilterPanel";
 import PriceRangeSlider from "../components/PriceRangeSlider";
 
@@ -34,6 +35,8 @@ interface CategoryProduct {
   brand?: string;
   price: number;
   image?: string;
+  secondaryImage?: string | null;
+  images?: string[];
   stock?: number;
   sizes?: string[];
   size?: string;
@@ -97,17 +100,12 @@ const SkeletonCard = () => (
 const ModernProductCard = React.memo(function ModernProductCard({ product }: { product: CategoryProduct }) {
   const navigate = useNavigate();
 
-  const imageUrl =
-    product.image || "https://placehold.co/600x800?text=No+Image";
+  const primaryUrl = product.image || "https://placehold.co/600x800?text=No+Image";
+  const secondaryUrl = product.secondaryImage || (product.images && product.images.length > 1 ? product.images[1] : null);
 
   const handleCardClick = () => {
     navigate(`/products/${product.id}`);
   };
-
-  const categoryName =
-    typeof product.category === "object"
-      ? product.category?.name
-      : product.category || product.categoryName;
 
   const finalPrice =
     (product.discount ?? 0) > 0
@@ -117,56 +115,69 @@ const ModernProductCard = React.memo(function ModernProductCard({ product }: { p
   return (
     <div
       onClick={handleCardClick}
-      className="group relative aspect-[3/4] w-full cursor-pointer overflow-hidden rounded-3xl bg-gray-50 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl"
+      className="group relative aspect-[3/4] w-full cursor-pointer overflow-hidden rounded-3xl bg-gray-50 transition-all duration-300 ease-out hover:-translate-y-1.5 hover:shadow-2xl transform-gpu"
     >
-      {/* Product Image */}
+      {/* Primary Product Image */}
       <img
-        src={imageUrl}
+        src={primaryUrl}
         alt={product.name}
-        className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
+        className={`h-full w-full object-cover transition-all duration-700 ease-out transform-gpu group-hover:scale-105 ${
+          secondaryUrl ? "group-hover:opacity-0" : ""
+        }`}
         loading="lazy"
+        decoding="async"
       />
 
-      {/* Gradient Vignette */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/0 to-black/10 opacity-60 transition-opacity duration-300 group-hover:opacity-80" />
+      {/* Secondary Angle / Detail Image (Cross-fade on hover) */}
+      {secondaryUrl && (
+        <img
+          src={secondaryUrl}
+          alt={`${product.name} alternate view`}
+          className="absolute inset-0 h-full w-full object-cover opacity-0 transition-all duration-700 ease-out transform-gpu group-hover:opacity-100 group-hover:scale-105"
+          loading="lazy"
+          decoding="async"
+        />
+      )}
 
-      {/* Top Badge */}
-      <div className="absolute top-4 left-4 right-4 flex items-center justify-between pointer-events-none">
-        <span className="pointer-events-auto rounded-full bg-white/90 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-900 shadow-sm backdrop-blur-md">
-          {categoryName || "Collection"}
-        </span>
-      </div>
+      {/* Gradient Vignette */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/0 to-black/10 opacity-60 transition-opacity duration-300 group-hover:opacity-80 pointer-events-none" />
+
+
 
       {/* Bottom Floating Info Card */}
-      <div className="absolute bottom-3 left-3 right-3 transition-transform duration-300 group-hover:-translate-y-1">
-        <div className="flex items-center justify-between rounded-2xl bg-white/90 p-3.5 shadow-lg backdrop-blur-md border border-white/40">
-          <div className="flex flex-col truncate pr-2">
-            {product.brand && (
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none mb-1 truncate">
-                {product.brand}
-              </span>
-            )}
-            <h3 className="truncate text-xs font-bold text-gray-900">
+      <div className="absolute bottom-3 left-3 right-3 sm:bottom-3.5 sm:left-3.5 sm:right-3.5 transition-transform duration-300 group-hover:-translate-y-0.5">
+        <div className="flex items-center justify-between min-h-[72px] sm:min-h-[76px] rounded-2xl bg-white/90 p-3 sm:p-3.5 shadow-lg backdrop-blur-md border border-white/40 transition-all duration-300 group-hover:shadow-xl group-hover:border-white/60">
+          <div className="flex flex-col justify-center truncate pr-2 min-w-0 flex-1">
+            <h3 className="truncate text-xs sm:text-[13px] font-bold text-gray-900 leading-tight">
               {product.name}
             </h3>
-            {product.variantOptions && Object.keys(product.variantOptions).length > 0 && (
-              <span className="truncate text-[9px] font-medium text-gray-500">
+
+            {product.variantOptions && Object.keys(product.variantOptions).length > 0 ? (
+              <span className="truncate text-[9.5px] sm:text-[10px] font-medium text-gray-500 leading-none mt-0.5">
                 {Object.entries(product.variantOptions)
                   .map(([axis, value]) => `${axis}: ${value}`)
                   .join(" · ")}
               </span>
-            )}
+            ) : (product.size || product.color) ? (
+              <span className="truncate text-[9.5px] sm:text-[10px] font-medium text-gray-500 leading-none mt-0.5">
+                {[product.size, product.color].filter(Boolean).join(" · ")}
+              </span>
+            ) : (product as any).variantsCount && (product as any).variantsCount > 1 ? (
+              <span className="truncate text-[9.5px] sm:text-[10px] font-medium text-gray-500 leading-none mt-0.5">
+                Variants: {(product as any).variantsCount}
+              </span>
+            ) : null}
 
             <div className="flex items-center gap-2 mt-1">
-              <span className="text-xs font-extrabold text-gray-900">
+              <span className="text-xs sm:text-sm font-extrabold text-gray-900">
                 ₹{finalPrice.toFixed(0)}
               </span>
               {(product.discount ?? 0) > 0 && (
                 <>
-                  <span className="text-[10px] text-gray-400 line-through">
+                  <span className="text-[10px] sm:text-xs text-gray-400 line-through">
                     ₹{product.price?.toFixed(0)}
                   </span>
-                  <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">
+                  <span className="text-[9px] sm:text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">
                     {product.discount}% OFF
                   </span>
                 </>
@@ -174,7 +185,7 @@ const ModernProductCard = React.memo(function ModernProductCard({ product }: { p
             </div>
           </div>
 
-          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-900 group-hover:bg-black group-hover:text-white transition-colors duration-300">
+          <div className="flex h-7.5 w-7.5 sm:h-8 sm:w-8 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-900 group-hover:bg-black group-hover:text-white transition-all duration-300 ml-2 group-hover:scale-105 shadow-xs">
             <ArrowRight className="h-3.5 w-3.5" />
           </div>
         </div>
@@ -197,79 +208,96 @@ const RatingsFilterSection = ({
   selected: Set<number>;
   onToggle: (threshold: number) => void;
 }) => (
-  <div className="pt-5">
+  <div className="pt-4 pb-4 border-b border-gray-200">
     <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">
       Customer Ratings
     </h4>
-    <div className="space-y-2.5">
-      {RATING_THRESHOLDS.map((t) => (
-        <label key={t} className="flex items-center gap-2.5 cursor-pointer group">
-          <input
-            type="checkbox"
-            checked={selected.has(t)}
-            onChange={() => onToggle(t)}
-            className="w-4 h-4 rounded text-[var(--theme-primary)] border-gray-300 focus:ring-[var(--theme-primary)]"
-          />
-          <span className="flex items-center gap-1 text-sm text-gray-600 group-hover:text-gray-900 transition-colors">
-            {t}
-            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-            &amp; above
-          </span>
-        </label>
-      ))}
+    <div className="space-y-1.5">
+      {RATING_THRESHOLDS.map((t) => {
+        const active = selected.has(t);
+        return (
+          <label
+            key={t}
+            onClick={(e) => {
+              e.preventDefault();
+              onToggle(t);
+            }}
+            className="flex items-center gap-2.5 py-0.5 cursor-pointer group select-none"
+          >
+            <input
+              type="checkbox"
+              checked={active}
+              onChange={() => {}}
+              className="w-3.5 h-3.5 rounded-[2px] border-gray-300 text-black accent-black focus:ring-0 cursor-pointer"
+            />
+            <span className="flex items-center gap-1 text-xs text-gray-800 group-hover:text-black transition-colors font-normal">
+              <span>{t}</span>
+              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 inline shrink-0" />
+              <span className="text-gray-400 text-[11px]">&amp; above</span>
+            </span>
+          </label>
+        );
+      })}
     </div>
   </div>
 );
 
 // FILTER CONTROL COMPONENT
-//
-// The in-page subcategory tree that used to live here was removed — the site-wide
-// CategoryMegaMenu (see Navbar.tsx) now owns category browsing everywhere. What's left
-// — Price, Customer Ratings (both built-in, every product has them), and Attributes
-// like Fabric/Color (category-specific, admin-defined) — is shown to shoppers purely
-// as "Filters"; "Attribute" is backend/admin schema terminology, not something a
-// customer needs to know. Everything here is staged, not instant: nothing refetches
-// the product grid until the single "Apply Filters" button at the bottom is pressed,
-// so dragging the price slider or browsing several attribute options doesn't fire a
-// request per pixel/click.
 const FilterControls = ({
   resetFilters,
   onApply,
   ratingsSection,
   priceSection,
   attributesSection,
+  filtersLoading,
 }: {
   resetFilters: () => void;
   onApply: () => void;
   ratingsSection?: React.ReactNode;
   priceSection?: React.ReactNode;
   attributesSection?: React.ReactNode;
+  filtersLoading?: boolean;
 }) => {
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between pb-4 border-b border-gray-200">
-        <div className="flex items-center gap-2 text-gray-900 font-bold">
-          <SlidersHorizontal className="w-4 h-4 text-gray-700" />
-          <span className="text-sm uppercase tracking-wider">Filters</span>
-        </div>
+      <div className="flex items-center justify-between pb-3.5 border-b border-gray-200">
+        <span className="text-xs font-bold text-gray-900 uppercase tracking-wider">
+          FILTERS
+        </span>
         <button
+          type="button"
           onClick={resetFilters}
-          className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 hover:text-rose-800 transition-colors cursor-pointer"
+          className="text-xs font-bold text-gray-500 hover:text-black uppercase tracking-wider transition-colors cursor-pointer"
         >
-          <RotateCcw className="w-3 h-3" />
-          Clear
+          CLEAR ALL
         </button>
       </div>
 
       {ratingsSection}
-      {priceSection}
-      {attributesSection}
 
-      <div className="pt-6">
+      {filtersLoading ? (
+        <div className="space-y-3 pt-4 animate-pulse">
+          <div className="h-3 w-1/3 bg-gray-100 rounded" />
+          <div className="h-4 w-full bg-gray-100 rounded" />
+          <div className="h-3 w-1/2 bg-gray-100 rounded pt-2" />
+          <div className="flex gap-2">
+            <div className="h-6 w-16 bg-gray-100 rounded" />
+            <div className="h-6 w-16 bg-gray-100 rounded" />
+          </div>
+        </div>
+      ) : (
+        <>
+          {priceSection}
+          {attributesSection}
+        </>
+      )}
+
+      <div className="pt-4 mt-2">
         <button
           type="button"
           onClick={onApply}
-          className="w-full py-3.5 bg-[var(--theme-primary)] text-[var(--theme-primary-ink)] text-xs font-bold uppercase tracking-widest rounded-2xl hover:bg-[var(--theme-primary-hover)] transition-all shadow-md active:scale-98 cursor-pointer"
+          disabled={filtersLoading}
+          className="w-full py-2.5 bg-black hover:bg-zinc-800 text-white text-xs font-bold uppercase tracking-wider rounded-[2px] transition-all active:scale-[0.99] cursor-pointer disabled:opacity-50 shadow-xs"
         >
           Apply Filters
         </button>
@@ -277,6 +305,14 @@ const FilterControls = ({
     </div>
   );
 };
+
+const SORT_OPTIONS = [
+  { label: "Recommended", value: "featured" },
+  { label: "What's New", value: "newest" },
+  { label: "Popularity", value: "popular" },
+  { label: "Price: High to Low", value: "price-desc" },
+  { label: "Price: Low to High", value: "price-asc" },
+];
 
 // --- MAIN PAGE COMPONENT ---
 const CategoryProductsPage = () => {
@@ -291,6 +327,7 @@ const CategoryProductsPage = () => {
   // Page title is the top-level ancestor of whatever category `slug` resolves to
   // (itself when the slug already is a root category) — see the effect below.
   const [categoryName, setCategoryName] = useState("");
+  const [showFilters, setShowFilters] = useState(true);
   const [sortType, setSortType] = useState("featured");
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -334,35 +371,47 @@ const CategoryProductsPage = () => {
   const [pendingRatingThresholds, setPendingRatingThresholds] = useState<Set<number>>(new Set());
   const [appliedMinRating, setAppliedMinRating] = useState<number | null>(null);
 
+  // Category attributes & filter loading state
+  const [categoryAttributes, setCategoryAttributes] = useState<FilterAttribute[]>([]);
+  const [filtersLoading, setFiltersLoading] = useState(true);
+
   // Desktop and mobile drawer each mount their OWN AttributeFilterPanel instance with
   // independent internal selection state, so each needs its own ref for the shared
   // Apply button to commit the co-located instance.
   const desktopAttrPanelRef = useRef<AttributeFilterPanelHandle>(null);
   const mobileAttrPanelRef = useRef<AttributeFilterPanelHandle>(null);
 
-  // Fetch the price bounds for this category's subtree (backend already computes this
-  // in getProductFilters — see product-user.controller.ts — it was just unused here
-  // until now) and seed the pending range to the full bounds on first load / category
-  // switch.
+  // Fetch the price bounds and filterable attributes for this category's subtree simultaneously
   useEffect(() => {
     if (!slug) return;
+    setFiltersLoading(true);
     api
       .get(`/user/shop/categories/${slug}/filters`)
       .then((res) => {
-        const range = res.data.priceRange;
+        const range = res.data?.priceRange;
         if (range && typeof range.min === "number" && typeof range.max === "number") {
-          setPriceBounds({ min: Math.floor(range.min), max: Math.ceil(range.max) });
+          let min = Math.floor(range.min);
+          const max = Math.ceil(range.max);
+          if (min >= max) {
+            min = 0;
+          }
+          setPriceBounds({ min, max });
+          setPendingPriceRange([min, max]);
         } else {
           setPriceBounds(null);
+          setPendingPriceRange(null);
         }
+        setCategoryAttributes(res.data?.attributes ?? []);
       })
-      .catch(() => setPriceBounds(null));
+      .catch(() => {
+        setPriceBounds(null);
+        setPendingPriceRange(null);
+        setCategoryAttributes([]);
+      })
+      .finally(() => {
+        setFiltersLoading(false);
+      });
   }, [slug]);
-
-  useEffect(() => {
-    if (!priceBounds) return;
-    setPendingPriceRange([priceBounds.min, priceBounds.max]);
-  }, [priceBounds]);
 
   const toggleRatingThreshold = (threshold: number) => {
     setPendingRatingThresholds((prev) => {
@@ -429,6 +478,10 @@ const CategoryProductsPage = () => {
         const res = await api.get(`/user/shop/categories/${slug}`, { params });
         const newProducts = (res.data.getProducts || []).map(normalizeProduct);
 
+        if (res.data.category && typeof res.data.category.showFilters === "boolean") {
+          setShowFilters(res.data.category.showFilters);
+        }
+
         if (reset) {
           setProducts(newProducts);
         } else {
@@ -493,6 +546,7 @@ const CategoryProductsPage = () => {
             id: String(c.id ?? c._id),
             name: c.name,
             parentId: c.parentId ? String(c.parentId) : null,
+            showFilters: c.showFilters !== false,
           }));
 
           const matched = rawList.find(
@@ -503,6 +557,10 @@ const CategoryProductsPage = () => {
               String(c.name).toLowerCase() === String(slug).toLowerCase()
           );
           if (!matched) return;
+
+          if (matched.showFilters !== undefined) {
+            setShowFilters(matched.showFilters !== false);
+          }
 
           const matchedId = String(matched.id ?? matched._id);
 
@@ -556,12 +614,12 @@ const CategoryProductsPage = () => {
       (appliedPriceRange[0] > priceBounds.min || appliedPriceRange[1] < priceBounds.max));
   const isCategoryEmpty = products.length === 0 && !hasActiveFilters && !loading;
 
-  if (initialLoading) {
+  if (initialLoading || filtersLoading) {
     return (
       <div className="min-h-screen bg-white">
         <div className="h-24 bg-gradient-to-r from-gray-50 to-white" />
-        <div className="max-w-7xl mx-auto px-4 py-24">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="w-full max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-24">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
               <SkeletonCard key={i} />
             ))}
@@ -603,10 +661,10 @@ const CategoryProductsPage = () => {
           { name: categoryName || "Category", path: `/categories/${slug}` },
         ]}
       />
-      <main className={`max-w-7xl mx-auto px-4 pt-4 pb-16 mt-(--app-header-h) w-full flex-1 flex flex-col ${isCategoryEmpty ? "justify-center min-h-[calc(100vh-10rem)]" : ""}`}>
+      <main className={`w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 pt-6 pb-16 mt-[var(--app-header-h,5rem)] flex-1 flex flex-col ${isCategoryEmpty ? "justify-center min-h-[calc(100vh-10rem)]" : ""}`}>
         <button
           onClick={() => navigate(-1)}
-          className="group flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-gray-900 transition-colors mb-4 mt-5 shrink-0"
+          className="group inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-gray-900 transition-colors mb-4 mt-2 shrink-0 self-start cursor-pointer"
         >
           <ArrowLeft className="w-3.5 h-3.5 transform transition-transform group-hover:-translate-x-1" />
           <span>Go Back</span>
@@ -618,7 +676,7 @@ const CategoryProductsPage = () => {
             <motion.h2
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-3xl font-bold tracking-tight sm:text-4xl font-sans text-black capitalize"
+              className="text-2xl sm:text-4xl font-bold tracking-tight font-sans text-black capitalize"
             >
               {categoryName && isNaN(Number(categoryName.trim()))
                 ? categoryName
@@ -628,50 +686,40 @@ const CategoryProductsPage = () => {
               initial={{ width: 0 }}
               animate={{ width: "60px" }}
               transition={{ duration: 0.8 }}
-              className="h-1 bg-[var(--theme-primary)] mx-auto mt-2 rounded-full"
+              className="h-1 bg-black mx-auto mt-2 rounded-full"
             />
           </div>
         )}
 
-        {/* --- COMPACT CONTROLS BAR (SEARCH & SORT) --- */}
+        {/* --- CONTROLS BAR (SEARCH & SORT & RESULTS COUNT) --- */}
         {!isCategoryEmpty && (
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-6">
-            {/* Search Box with Embedded Clear (X) Button */}
-            <div className="relative w-full sm:w-64 md:w-72">
-              
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+            {/* Results Count on left */}
+            <div className="text-xs text-gray-500 font-medium order-2 sm:order-1">
+              Showing <strong className="text-gray-900 font-bold">{displayedProducts.length}</strong> {displayedProducts.length === 1 ? "item" : "items"}
             </div>
 
-            {/* Right Controls: Sort & Mobile Filter */}
-            <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-              <Popover className="relative w-full sm:w-auto">
-                <Popover.Button className="w-full sm:w-auto inline-flex items-center justify-between sm:justify-start gap-1 px-3 py-1.5 bg-white border border-gray-200 hover:border-gray-300 rounded-full text-xs font-medium text-gray-700 focus:outline-none cursor-pointer transition-colors">
+            {/* Right Controls: Sort Popover & Mobile Filter */}
+            <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end order-1 sm:order-2">
+              <Popover className="relative flex-1 sm:flex-initial">
+                <Popover.Button className="w-full sm:w-auto inline-flex items-center justify-between sm:justify-start gap-3 px-3.5 py-2 bg-white border border-gray-300 hover:border-gray-400 rounded-[2px] text-xs text-gray-700 focus:outline-none cursor-pointer transition-colors">
                   <span className="truncate">
-                    {sortType === "featured" && "Sort By: Featured"}
-                    {sortType === "newest" && "Sort By: Newest"}
-                    {sortType === "price-asc" && "Price: Low to High"}
-                    {sortType === "price-desc" && "Price: High to Low"}
-                    {sortType === "popular" && "Most Popular"}
+                    Sort by : <strong className="font-bold text-gray-900">{SORT_OPTIONS.find((o) => o.value === sortType)?.label || "Recommended"}</strong>
                   </span>
-                  <ChevronDown className="h-3 w-3 text-gray-400 shrink-0" />
+                  <ChevronDown className="h-3.5 w-3.5 text-gray-500 shrink-0 ml-1" />
                 </Popover.Button>
-                <Popover.Panel className="absolute right-0 mt-2 w-48 bg-white border border-gray-100 rounded-2xl shadow-xl p-1.5 z-30 ring-1 ring-black/5">
+                <Popover.Panel className="absolute left-0 sm:left-auto sm:right-0 mt-1 w-52 bg-white border border-gray-200 rounded-[2px] shadow-lg py-1 z-40">
                   {({ close }) => (
-                    <div className="flex flex-col gap-0.5">
-                      {[
-                        { label: "Featured", value: "featured" },
-                        { label: "Newest Arrivals", value: "newest" },
-                        { label: "Price: Low to High", value: "price-asc" },
-                        { label: "Price: High to Low", value: "price-desc" },
-                        { label: "Most Popular", value: "popular" },
-                      ].map((option) => (
+                    <div className="flex flex-col">
+                      {SORT_OPTIONS.map((option) => (
                         <button
                           key={option.value}
                           type="button"
                           className={classNames(
                             sortType === option.value
-                              ? "bg-slate-100 text-gray-900 font-bold"
+                              ? "bg-gray-100 text-black font-bold"
                               : "text-gray-700 hover:bg-gray-50",
-                            "block w-full px-3 py-1.5 text-left text-xs rounded-xl transition-colors cursor-pointer"
+                            "block w-full px-4 py-2.5 text-left text-xs transition-colors cursor-pointer"
                           )}
                           onClick={() => {
                             setSortType(option.value);
@@ -687,12 +735,15 @@ const CategoryProductsPage = () => {
               </Popover>
 
               {/* Mobile Filters Button */}
-              <button
-                onClick={() => setIsMobileFilterOpen(true)}
-                className="lg:hidden w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-full text-xs font-medium text-gray-700 hover:bg-gray-50 cursor-pointer"
-              >
-                <Filter className="h-3.5 w-3.5" /> Filters
-              </button>
+              {showFilters && (
+                <button
+                  type="button"
+                  onClick={() => setIsMobileFilterOpen(true)}
+                  className="lg:hidden flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-white border border-gray-300 hover:border-gray-400 rounded-[2px] text-xs font-semibold text-gray-800 hover:bg-gray-50 cursor-pointer transition-colors"
+                >
+                  <Filter className="h-3.5 w-3.5 text-black" /> Filters
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -715,55 +766,54 @@ const CategoryProductsPage = () => {
             </div>
           ) : (
             <div>
-              {/* Results Counter */}
-              <div className="mb-4 text-xs text-gray-500 text-right">
-                Showing <strong className="text-gray-900">{displayedProducts.length}</strong> items
-              </div>
-
               {/* MAIN CONTENT GRID */}
-              <div className="flex flex-col lg:flex-row gap-8 items-start">
+              <div className={showFilters ? "flex flex-col lg:flex-row gap-8 items-start w-full" : "w-full"}>
                 {/* DESKTOP SIDEBAR */}
-                <aside className="lg:w-64 flex-shrink-0 hidden lg:block">
-                  <div className="sticky top-24 p-5 bg-gray-50 rounded-2xl border border-gray-100">
-                    <FilterControls
-                      resetFilters={resetFilters}
-                      onApply={() => applyAllFilters(desktopAttrPanelRef)}
-                      ratingsSection={
-                        <RatingsFilterSection
-                          selected={pendingRatingThresholds}
-                          onToggle={toggleRatingThreshold}
-                        />
-                      }
-                      priceSection={
-                        priceBounds && pendingPriceRange ? (
-                          <div className="pt-5">
-                            <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">
-                              Price
-                            </h4>
-                            <PriceRangeSlider
-                              bounds={priceBounds}
-                              value={pendingPriceRange}
-                              onChange={setPendingPriceRange}
-                            />
-                          </div>
-                        ) : undefined
-                      }
-                      attributesSection={
-                        slug ? (
-                          <AttributeFilterPanel
-                            ref={desktopAttrPanelRef}
-                            categoryId={slug}
-                            onFiltersChange={handleDynFiltersChange}
-                            resetKey={dynFilterResetKey}
+                {showFilters && (
+                  <aside className="lg:w-64 xl:w-72 flex-shrink-0 hidden lg:block pr-6 xl:pr-8 border-r border-gray-200">
+                    <div className="sticky top-24">
+                      <FilterControls
+                        resetFilters={resetFilters}
+                        onApply={() => applyAllFilters(desktopAttrPanelRef)}
+                        filtersLoading={filtersLoading}
+                        ratingsSection={
+                          <RatingsFilterSection
+                            selected={pendingRatingThresholds}
+                            onToggle={toggleRatingThreshold}
                           />
-                        ) : undefined
-                      }
-                    />
-                  </div>
-                </aside>
+                        }
+                        priceSection={
+                          priceBounds && pendingPriceRange ? (
+                            <div className="pt-4 pb-4 border-b border-gray-200">
+                              <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">
+                                Price
+                              </h4>
+                              <PriceRangeSlider
+                                bounds={priceBounds}
+                                value={pendingPriceRange}
+                                onChange={setPendingPriceRange}
+                              />
+                            </div>
+                          ) : undefined
+                        }
+                        attributesSection={
+                          categoryAttributes.length > 0 ? (
+                            <AttributeFilterPanel
+                              ref={desktopAttrPanelRef}
+                              categoryId={slug}
+                              attributes={categoryAttributes}
+                              onFiltersChange={handleDynFiltersChange}
+                              resetKey={dynFilterResetKey}
+                            />
+                          ) : undefined
+                        }
+                      />
+                    </div>
+                  </aside>
+                )}
 
                 {/* PRODUCTS GRID */}
-                <div className="flex-1 w-full">
+                <div className="flex-1 w-full min-w-0">
                   {displayedProducts.length === 0 && !loading ? (
                     <div className="text-center py-16 bg-gray-50 rounded-3xl border border-dashed border-gray-200">
                       <ShoppingBag className="w-12 h-12 mx-auto text-gray-300 mb-4" />
@@ -787,7 +837,13 @@ const CategoryProductsPage = () => {
                         loading ? "opacity-50 pointer-events-none" : "opacity-100"
                       )}
                     >
-                      <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+                      <div
+                        className={`grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-2 ${
+                          showFilters
+                            ? "lg:grid-cols-3 xl:grid-cols-3"
+                            : "md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4"
+                        }`}
+                      >
                         {displayedProducts.map((product) => (
                           <ModernProductCard key={product.id} product={product} />
                         ))}
@@ -817,7 +873,7 @@ const CategoryProductsPage = () => {
 
       {/* MOBILE FILTER DRAWER */}
       <AnimatePresence>
-        {isMobileFilterOpen && (
+        {showFilters && isMobileFilterOpen && (
           <>
             <motion.div
               initial={{ opacity: 0 }}
@@ -831,22 +887,24 @@ const CategoryProductsPage = () => {
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed inset-y-0 right-0 z-50 w-full max-w-xs bg-white p-6 shadow-2xl flex flex-col lg:hidden"
+              className="fixed inset-y-0 right-0 z-50 w-full max-w-xs bg-white p-5 shadow-2xl flex flex-col lg:hidden"
             >
-              <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-4">
-                <h3 className="text-base font-bold text-gray-900">Filters</h3>
+              <div className="flex items-center justify-between pb-3.5 border-b border-gray-200 mb-3">
+                <h3 className="text-xs font-bold text-gray-900 tracking-wider uppercase">FILTERS</h3>
                 <button
+                  type="button"
                   onClick={() => setIsMobileFilterOpen(false)}
-                  className="p-1 rounded-full hover:bg-gray-100 cursor-pointer"
+                  className="p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-900 cursor-pointer transition-colors"
                 >
-                  <X className="w-5 h-5 text-gray-500" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto pr-1">
                 <FilterControls
                   resetFilters={resetFilters}
                   onApply={() => applyAllFilters(mobileAttrPanelRef)}
+                  filtersLoading={filtersLoading}
                   ratingsSection={
                     <RatingsFilterSection
                       selected={pendingRatingThresholds}
@@ -855,7 +913,7 @@ const CategoryProductsPage = () => {
                   }
                   priceSection={
                     priceBounds && pendingPriceRange ? (
-                      <div className="pt-5">
+                      <div className="pt-4 pb-4 border-b border-gray-200">
                         <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">
                           Price
                         </h4>
@@ -868,10 +926,11 @@ const CategoryProductsPage = () => {
                     ) : undefined
                   }
                   attributesSection={
-                    slug ? (
+                    categoryAttributes.length > 0 ? (
                       <AttributeFilterPanel
                         ref={mobileAttrPanelRef}
                         categoryId={slug}
+                        attributes={categoryAttributes}
                         onFiltersChange={handleDynFiltersChange}
                         resetKey={dynFilterResetKey}
                       />

@@ -156,6 +156,7 @@ const PERMISSION_LABEL_MAP: Record<string, string> = {
   PRODUCT_DELETE: "Delete Product",
   ORDER_VIEW: "View Orders",
   ORDER_UPDATE: "Update Orders",
+  ORDER_CREATE: "Place Orders (Counter / Customer)",
 };
 
 const formatPermissionLabel = (perm: string): string => {

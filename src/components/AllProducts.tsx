@@ -31,6 +31,8 @@ interface AllProduct {
   brand?: string;
   price: number;
   image?: string;
+  secondaryImage?: string | null;
+  images?: string[];
   stock?: number;
   category?: { name?: string } | string;
   discount?: number;
@@ -84,7 +86,8 @@ function classNames(...c: (string | false | undefined | null)[]) {
 const ModernProductCard = React.memo(function ModernProductCard({ product }: { product: AllProduct }) {
   const navigate = useNavigate();
 
-  const imageUrl = product.image || "https://placehold.co/600x800?text=No+Image";
+  const primaryUrl = product.image || "https://placehold.co/600x800?text=No+Image";
+  const secondaryUrl = product.secondaryImage || (product.images && product.images.length > 1 ? product.images[1] : null);
 
   const handleCardClick = () => {
     navigate(`/products/${product.id}`);
@@ -97,36 +100,34 @@ const ModernProductCard = React.memo(function ModernProductCard({ product }: { p
   return (
     <div 
       onClick={handleCardClick}
-      className="group relative aspect-[3/4] w-full cursor-pointer overflow-hidden rounded-3xl bg-gray-100 transition-all hover:shadow-2xl hover:-translate-y-1"
+      className="group relative aspect-[5/7] w-full cursor-pointer overflow-hidden rounded-3xl bg-gray-50 border border-gray-200/80 shadow-xs transition-shadow duration-300 hover:shadow-xl"
     >
-      {/* Background Image */}
+      {/* Background Primary Image */}
       <img
-        src={imageUrl}
+        src={primaryUrl}
         alt={product.name}
         loading="lazy"
         decoding="async"
-        className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
+        className={`h-full w-full object-cover transition-opacity duration-500 ${
+          secondaryUrl ? "group-hover:opacity-0" : ""
+        }`}
       />
 
-      {/* Top Overlay Gradient */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+      {/* Secondary Angle / Detail Image (Cross-fade on hover) */}
+      {secondaryUrl && (
+        <img
+          src={secondaryUrl}
+          alt={`${product.name} alternate view`}
+          loading="lazy"
+          decoding="async"
+          className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+        />
+      )}
 
-      {/* Top Left: Category Tag */}
-      <div className="absolute left-4 top-4">
-        <span className="inline-flex items-center rounded-full bg-white/90 px-3 py-1 text-xs font-bold uppercase tracking-wider text-gray-900 backdrop-blur-md">
-          {categoryName || "Collection"}
-        </span>
-      </div>
-
-      {/* Bottom Info Card */}
-      <div className="absolute bottom-4 left-4 right-4 translate-y-2 opacity-90 transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
-        <div className="flex items-center justify-between rounded-2xl bg-white/95 p-4 shadow-lg backdrop-blur-xl border border-white/50">
-          <div className="flex flex-col truncate pr-2">
-            {product.brand && (
-              <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest leading-none mb-0.5 truncate select-none">
-                {product.brand}
-              </span>
-            )}
+      {/* Bottom Floating Info Card */}
+      <div className="absolute bottom-4 left-4 right-4">
+        <div className="flex items-center justify-between min-h-[76px] rounded-2xl bg-white p-3.5 shadow-md border border-gray-200 transition-all duration-300 group-hover:border-gray-300 group-hover:shadow-lg">
+          <div className="flex flex-col justify-center truncate pr-2 min-w-0">
             <h3 className="truncate text-sm font-bold text-gray-900">
               {product.name}
             </h3>
@@ -140,25 +141,25 @@ const ModernProductCard = React.memo(function ModernProductCard({ product }: { p
             <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
               {product.discount && product.discount > 0 ? (
                 <>
-                  <span className="text-xs font-bold text-gray-900">
-                    ₹{calculateDiscountedPrice(product.price, product.discount).toFixed(2)}
+                  <span className="text-sm font-extrabold text-gray-900">
+                    ₹{calculateDiscountedPrice(product.price, product.discount).toFixed(0)}
                   </span>
                   <span className="text-[10px] text-gray-400 line-through">
-                    ₹{product.price?.toFixed(2)}
+                    ₹{product.price?.toFixed(0)}
                   </span>
-                  <span className="text-[9px] text-green-600 font-bold bg-green-50 px-1 rounded">
+                  <span className="text-[9px] text-emerald-700 font-bold bg-emerald-50 border border-emerald-200/60 px-1 rounded">
                     {product.discount}% OFF
                   </span>
                 </>
               ) : (
-                <span className="text-xs font-bold text-gray-500">
-                  ₹{product.price?.toFixed(2)}
+                <span className="text-sm font-extrabold text-gray-900">
+                  ₹{product.price?.toFixed(0)}
                 </span>
               )}
             </div>
           </div>
           
-          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 group-hover:bg-[var(--theme-primary)] group-hover:text-[var(--theme-primary-ink)] transition-colors duration-300">
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-900 group-hover:bg-[var(--theme-primary)] group-hover:text-[var(--theme-primary-ink)] transition-colors duration-300">
             <ArrowRight className="h-4 w-4" />
           </div>
         </div>
@@ -170,9 +171,9 @@ const ModernProductCard = React.memo(function ModernProductCard({ product }: { p
 // Skeleton loader
 function SkeletonCard() {
   return (
-    <div className="relative aspect-[3/4] w-full overflow-hidden rounded-3xl bg-gray-200 animate-pulse">
-        <div className="absolute top-4 right-4 h-10 w-10 rounded-full bg-gray-300" />
-        <div className="absolute bottom-4 left-4 right-4 h-16 rounded-2xl bg-gray-300" />
+    <div className="relative aspect-[5/7] w-full overflow-hidden rounded-3xl bg-gray-100 animate-pulse border border-gray-200/80">
+      <div className="absolute top-4 right-4 h-10 w-10 rounded-full bg-gray-200" />
+      <div className="absolute bottom-4 left-4 right-4 h-20 rounded-2xl bg-gray-200" />
     </div>
   );
 }

@@ -6,7 +6,6 @@ import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { createPortal } from "react-dom";
 import { Link, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { PulseLoader } from "react-spinners";
 import { FaUserCircle } from "react-icons/fa";
 import api from "../utils/api";
 import { APP_VERSION } from "../utils/constant";
@@ -29,6 +28,7 @@ import {
 import {
   Bars3Icon,
   HomeIcon,
+  CubeIcon,
   XMarkIcon,
   UsersIcon,
   TagIcon,
@@ -45,7 +45,6 @@ import {
   CreditCardIcon,
   EyeIcon,
   ArrowRightOnRectangleIcon,
-  ComputerDesktopIcon,
   ShoppingCartIcon,
   CalendarIcon,
   Cog6ToothIcon,
@@ -64,6 +63,21 @@ const SUPER_ADMIN_NAVIGATION = [
     icon: HomeIcon,
   },
   {
+    name: "Place Order",
+    href: "/super-admin-dashboard/place-order",
+    icon: ShoppingCartIcon,
+  },
+  {
+    name: "Order Management",
+    href: "/super-admin-dashboard/order-management",
+    icon: ShoppingBagIcon,
+  },
+  {
+    name: "Products & Stock",
+    href: "/super-admin-dashboard/products",
+    icon: CubeIcon,
+  },
+  {
     name: "User Management",
     icon: UsersIcon,
     subLinks: [
@@ -75,11 +89,6 @@ const SUPER_ADMIN_NAVIGATION = [
     name: "Catalog Management",
     href: "/super-admin-dashboard/manage-catalog",
     icon: TagIcon,
-  },
-  {
-    name: "Order Management",
-    href: "/super-admin-dashboard/order-management",
-    icon: ShoppingBagIcon,
   },
   {
     name: "Coupon Management",
@@ -127,21 +136,6 @@ const SUPER_ADMIN_NAVIGATION = [
     name: "Customer Activity",
     href: "/super-admin-dashboard/customer-activity",
     icon: EyeIcon,
-  },
-  {
-    name: "Homepage Manager",
-    href: "/super-admin-dashboard/homepage",
-    icon: ComputerDesktopIcon,
-  },
-  {
-    name: "Content Pages",
-    href: "/super-admin-dashboard/content-pages",
-    icon: DocumentTextIcon,
-  },
-  {
-    name: "Place Order",
-    href: "/super-admin-dashboard/place-order",
-    icon: ShoppingCartIcon,
   },
   {
     name: "System Monitoring",
@@ -244,9 +238,9 @@ const CollapsedNavItem = ({
             onMouseEnter={openFlyout}
             onMouseLeave={scheduleClose}
             style={{ position: "fixed", top: flyoutPos.top, left: flyoutPos.left }}
-            className="z-50 w-48 rounded-md border border-slate-100 bg-white p-1 shadow-lg"
+            className="z-50 w-48 rounded-xl border border-[#CFE5E1] bg-[#EBF5F3] p-1.5 shadow-2xl text-[#173836]"
           >
-            <div className="px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">
+            <div className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-[#4D7C79]">
               {item.name}
             </div>
             {item.subLinks!.map((sub: SubLink) => {
@@ -258,9 +252,9 @@ const CollapsedNavItem = ({
                   onClick={onLinkClick}
                   className={classNames(
                     isSubActive
-                      ? "bg-slate-200 text-slate-950 font-bold"
-                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
-                    "block px-3 py-2 rounded-md text-sm/6 font-semibold transition-colors duration-200 whitespace-nowrap",
+                      ? "bg-[#0B6B6B] text-white font-bold shadow-xs"
+                      : "text-[#244E4C] hover:bg-[#D9ECE8] hover:text-[#0B6B6B]",
+                    "block px-3 py-2 rounded-lg text-sm/6 font-semibold transition-colors duration-200 whitespace-nowrap",
                   )}
                 >
                   {sub.name}
@@ -308,10 +302,10 @@ const NavLink = ({
     );
 
   const baseClasses =
-    "group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold transition-colors duration-200 cursor-pointer";
-  const activeClasses = "bg-slate-100 text-slate-900 font-bold";
+    "group flex gap-x-3 rounded-xl p-2.5 text-sm/6 font-semibold transition-all duration-200 cursor-pointer";
+  const activeClasses = "bg-[#0B6B6B] text-white font-bold shadow-sm";
   const inactiveClasses =
-    "text-slate-600 hover:bg-slate-50 hover:text-slate-900";
+    "text-[#244E4C] hover:bg-[#D9ECE8] hover:text-[#0B6B6B]";
 
   if (!hasSubLinks) {
     return (
@@ -385,9 +379,9 @@ const NavLink = ({
         }}
         transition={{ duration: 0.2 }}
         className={classNames(
-          "mt-1 space-y-1 overflow-hidden ml-4 rounded-md bg-slate-50/80",
+          "mt-1 space-y-1 overflow-hidden ml-4 rounded-xl bg-[#DFEFEA]/80",
           openMenu === item.name || isActiveParent
-            ? "p-1 border border-slate-100"
+            ? "p-1.5 border border-[#CFE5E1]"
             : "p-0 border-0",
         )}
       >
@@ -404,9 +398,9 @@ const NavLink = ({
                 }}
                 className={classNames(
                   isSubActive
-                    ? "bg-slate-200 text-slate-950 font-bold"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
-                  "block px-3 py-2 rounded-md transition-colors duration-200 whitespace-nowrap",
+                    ? "bg-[#0B6B6B] text-white font-bold shadow-xs"
+                    : "text-[#244E4C] hover:bg-[#D4EAE5] hover:text-[#0B6B6B]",
+                  "block px-3 py-2 rounded-lg text-xs font-semibold transition-colors duration-200 whitespace-nowrap",
                 )}
               >
                 {sub.name}
@@ -429,7 +423,6 @@ export default function SuperAdminDashboard() {
   );
   const [openMenu, setOpenMenu] = useState("");
   const [adminInfo, setAdminInfo] = useState<AdminInfo | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   useBodyScrollLock(sidebarOpen || showLogoutConfirm);
 
@@ -478,7 +471,6 @@ export default function SuperAdminDashboard() {
   };
 
   const fetchProfile = async () => {
-    setIsLoading(true);
     try {
       const res = await api.get("/admin/adminProfile");
       const data = res.data.adminData;
@@ -488,31 +480,17 @@ export default function SuperAdminDashboard() {
         avatar: data.avatar || "",
       });
     } catch (err) {
+      const status = (err as any)?.response?.status;
       console.error("Profile fetch failed:", err);
-      navigate("/login", { replace: true });
-    } finally {
-      setIsLoading(false);
+      if (status === 401 || status === 403 || status === 404) {
+        logout();
+      }
     }
   };
 
   useEffect(() => {
     fetchProfile();
   }, []);
-
-  if (isLoading) {
-    return (
-      <div className="flex h-screen w-screen flex-col items-center justify-center bg-slate-50 font-sans">
-        <div className="flex flex-col items-center justify-center gap-6 text-center">
-          <div className="relative flex items-center justify-center w-0 h-0 pl-1.5">
-            <PulseLoader color="#000000" />
-          </div>
-          <p className="text-xs uppercase font-bold tracking-widest text-slate-400 font-mono mt-12 w-full text-center select-none">
-            Loading...
-          </p>
-        </div>
-      </div>
-    );
-  }
   // Shared sidebar inner content for mobile + desktop. `collapsed` only ever
   // applies to the desktop rail — the mobile slide-over always calls this with
   // it left false, since there's no room benefit to collapsing an overlay.
@@ -534,13 +512,13 @@ export default function SuperAdminDashboard() {
         />
         {!collapsed && (
           <div className="flex items-center min-w-0">
-            <div className="h-6 w-px bg-slate-200 mx-1 shrink-0" />
+            <div className="h-6 w-px bg-[#CFE5E1] mx-1 shrink-0" />
             <div className="flex flex-col justify-center min-w-0 pl-1.5 text-left">
-              <span className="font-extrabold text-xs tracking-tight text-slate-900 truncate leading-tight">
+              <span className="font-extrabold text-xs tracking-tight text-[#173836] truncate leading-tight">
                 {branding.companyName || "blueprint_crm"}
               </span>
               {branding.companyTagline && (
-                <span className="text-[10px] text-slate-400 font-medium tracking-wide truncate leading-tight mt-0.5">
+                <span className="text-[10px] text-[#4D7C79] font-medium tracking-wide truncate leading-tight mt-0.5">
                   {branding.companyTagline}
                 </span>
               )}
@@ -553,13 +531,13 @@ export default function SuperAdminDashboard() {
       <div
         title={collapsed ? "Super Admin" : undefined}
         className={classNames(
-          "flex items-center gap-2 rounded-lg bg-slate-100 border border-slate-200 px-3 py-2",
+          "flex items-center gap-2 rounded-xl bg-[#D7ECE7] border border-[#BFDFD9] px-3 py-2 text-[#0B6B6B] shadow-2xs",
           collapsed && "justify-center px-2",
         )}
       >
-        <ShieldCheckIcon className="h-4 w-4 text-slate-700 shrink-0" />
+        <ShieldCheckIcon className="h-4 w-4 text-[#0B6B6B] shrink-0" />
         {!collapsed && (
-          <span className="text-xs font-semibold text-slate-750 uppercase tracking-wide">
+          <span className="text-xs font-bold text-[#0B6B6B] uppercase tracking-wider">
             Super Admin
           </span>
         )}
@@ -587,20 +565,20 @@ export default function SuperAdminDashboard() {
               onClick={() => setShowLogoutConfirm(true)}
               title={collapsed ? "Logout" : undefined}
               className={classNames(
-                "group -mx-2 flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold text-slate-600 hover:bg-red-50 hover:text-red-600 cursor-pointer transition-colors",
+                "group -mx-2 flex gap-x-3 rounded-xl p-2.5 text-sm/6 font-semibold text-[#3B6664] hover:bg-rose-50 hover:text-rose-600 cursor-pointer transition-colors",
                 collapsed && "justify-center",
               )}
             >
               <ArrowRightOnRectangleIcon
                 aria-hidden="true"
-                className="size-6 shrink-0 text-slate-500 group-hover:text-red-600"
+                className="size-6 shrink-0 text-[#4D7C79] group-hover:text-rose-600"
               />
               {!collapsed && "Logout"}
             </a>
           </li>
           <li
             className={classNames(
-              "px-2 pb-1 text-[11px] font-medium text-slate-400 select-none",
+              "px-2 pb-1 text-[11px] font-medium text-[#6A9491] select-none",
               collapsed && "text-center px-0",
             )}
             title={collapsed ? `v${APP_VERSION}` : undefined}
@@ -648,7 +626,7 @@ export default function SuperAdminDashboard() {
                 </div>
               </TransitionChild>
               <div
-                className="relative flex h-full grow flex-col gap-y-5 overflow-y-auto scrollbar-thin px-6 pb-4 border-r border-slate-200 text-slate-900 bg-white"
+                className="relative flex h-full grow flex-col gap-y-5 overflow-y-auto scrollbar-thin px-6 pb-4 border-r border-[#CFE5E1] text-[#173836] bg-[#EBF5F3]"
                 style={{ backgroundColor: "var(--sidebar-start)" }}
               >
                 {sidebarInner(() => setSidebarOpen(false))}
@@ -660,7 +638,7 @@ export default function SuperAdminDashboard() {
         {/* ── Desktop Sidebar ── */}
         <div
           className={classNames(
-            "hidden text-slate-900 border-r border-slate-200 lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:flex-col transition-[width] duration-300 ease-in-out",
+            "hidden text-[#173836] border-r border-[#CFE5E1] lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:flex-col transition-[width] duration-300 ease-in-out bg-[#EBF5F3]",
             isSidebarCollapsed ? "lg:w-20" : "lg:w-72",
           )}
           style={{ backgroundColor: "var(--sidebar-start)" }}
@@ -674,13 +652,12 @@ export default function SuperAdminDashboard() {
             {sidebarInner(undefined, isSidebarCollapsed)}
           </div>
 
-          {/* Collapse/expand toggle — straddles the sidebar's right edge, the
-              usual spot for this control in icon-rail layouts. */}
+          {/* Collapse/expand toggle — straddles the sidebar's right edge */}
           <button
             type="button"
             onClick={() => setIsSidebarCollapsed((prev) => !prev)}
             title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="absolute top-20 -right-3 hidden lg:flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm hover:text-slate-900 hover:shadow-md transition-colors"
+            className="absolute top-20 -right-3 hidden lg:flex h-6 w-6 items-center justify-center rounded-full border border-[#CFE5E1] bg-white text-[#0B6B6B] shadow-md hover:bg-[#D9ECE8] hover:shadow-lg transition-colors cursor-pointer"
           >
             {isSidebarCollapsed ? (
               <ChevronRightIcon className="size-3.5" />

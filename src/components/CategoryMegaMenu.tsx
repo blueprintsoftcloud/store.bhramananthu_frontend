@@ -1,24 +1,20 @@
 // src/components/CategoryMegaMenu.tsx
-// Site-wide "browse by category" bar rendered directly under Navbar (see Navbar.tsx's
-// header). Top-level categories (parentId null) each become a bar item; hovering one
-// that has subcategories opens a multi-column flyout — one column per direct child,
-// with that child's own children listed underneath it. Clicking any node navigates
-// straight to its product page (/categories/:id) — CategoryProductPage.tsx already
-// refetches both products and the AttributeFilterPanel's attributes whenever the
-// category id in the URL changes, so "the products and filter attributes change based
-// on the item selected" falls out of normal route navigation with no extra wiring.
-//
-// Content is fully derived from live Category data (GET /user/shop/categories, the
-// same endpoint CategoryProductPage.tsx already uses) — there is no separate curated
-// menu structure to keep in sync. The only admin control is per-top-level-category
-// `showInNav` / `navOrder`, set from Homepage Manager (see HomepageManager.tsx's
-// Navigation tab) and applied server-side (product-user.controller.ts's
-// getAllCategories already filters/orders by them).
+// Site-wide "browse by category" bar rendered directly under Navbar.
+// Displays top-level categories configured in Homepage Manager > Navigation Menu.
+// Hovering a category with subcategories displays an elevated glassmorphic mega flyout.
 
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  LayoutGrid,
+  ArrowRight,
+  Sparkles,
+  Layers,
+} from "lucide-react";
 import api from "../utils/api";
 
 interface FlatCategory {
@@ -30,16 +26,12 @@ interface FlatCategory {
 
 const CategoryMegaMenu: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [categories, setCategories] = useState<FlatCategory[]>([]);
   const [openTopId, setOpenTopId] = useState<string | null>(null);
-  // Position for the flyout, captured from the trigger button's own bounding rect
-  // (see openMenu) — the flyout is portaled to document.body rather than rendered
-  // as an absolute-positioned child of the scroll row below, because a horizontally
-  // scrollable container (overflow-x: auto) forces its OTHER axis to clip too (a CSS
-  // spec quirk, not a bug) — any dropdown nested inside it would get its vertical
-  // overflow silently cut off. Same fix already used for the admin product list's
-  // action menu.
-  const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null);
+  const [menuPos, setMenuPos] = useState<{ left: number; top: number; width?: number } | null>(
+    null
+  );
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -49,14 +41,14 @@ const CategoryMegaMenu: React.FC = () => {
   const updateScrollState = () => {
     const el = scrollRef.current;
     if (!el) return;
-    setCanScrollLeft(el.scrollLeft > 4);
-    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+    setCanScrollLeft(el.scrollLeft > 6);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 6);
   };
 
   const scrollByPage = (direction: 1 | -1) => {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollBy({ left: direction * el.clientWidth * 0.7, behavior: "smooth" });
+    el.scrollBy({ left: direction * (el.clientWidth * 0.6), behavior: "smooth" });
   };
 
   useEffect(() => {
@@ -75,16 +67,11 @@ const CategoryMegaMenu: React.FC = () => {
       .catch(() => setCategories([]));
   }, []);
 
-  const childrenOf = (parentId: string) => categories.filter((c) => c.parentId === parentId);
+  const childrenOf = (parentId: string) =>
+    categories.filter((c) => c.parentId === parentId);
 
-  // Server already orders by navOrder/name and filters isActive, but showInNav needs
-  // applying client-side same as any other display concern — it only ever matters for
-  // top-level items, a subcategory has no independent nav slot of its own.
   const topLevel = categories.filter((c) => !c.parentId && c.showInNav !== false);
 
-  // Recompute arrow visibility once the real (possibly overflowing) row has painted,
-  // and again on resize — the number of top-level items is data-driven, so whether it
-  // overflows at all depends on viewport width, not just item count.
   useEffect(() => {
     updateScrollState();
     window.addEventListener("resize", updateScrollState);
@@ -103,13 +90,19 @@ const CategoryMegaMenu: React.FC = () => {
   const openMenu = (id: string, triggerEl: HTMLElement) => {
     cancelClose();
     const rect = triggerEl.getBoundingClientRect();
-    setMenuPos({ left: rect.left, top: rect.bottom });
+    // Position dropdown under the trigger, clamping left to prevent viewport clipping
+    const dropdownEstimatedWidth = 460;
+    let leftPos = rect.left;
+    if (leftPos + dropdownEstimatedWidth > window.innerWidth - 16) {
+      leftPos = Math.max(16, window.innerWidth - dropdownEstimatedWidth - 16);
+    }
+    setMenuPos({ left: leftPos, top: rect.bottom + 4 });
     setOpenTopId(id);
   };
 
   const scheduleClose = () => {
     cancelClose();
-    closeTimer.current = setTimeout(() => setOpenTopId(null), 150);
+    closeTimer.current = setTimeout(() => setOpenTopId(null), 180);
   };
 
   const goTo = (id: string) => {
@@ -121,116 +114,182 @@ const CategoryMegaMenu: React.FC = () => {
   const openColumns = openTop ? childrenOf(openTop.id) : [];
 
   return (
-    <div className="relative z-10 w-full bg-white/90 backdrop-blur-xl border-b border-black/5">
-      <div className="relative mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8">
+    <div className="relative z-20 w-full bg-white/95 backdrop-blur-md border-b border-gray-200/70 shadow-[0_2px_8px_rgba(0,0,0,0.03)] transition-all">
+      <div className="relative mx-auto max-w-7xl px-3 sm:px-6 lg:px-8">
+        {/* Left Scroll Button & Fade Mask */}
         {canScrollLeft && (
-          <>
-            <div className="hidden lg:block pointer-events-none absolute left-4 sm:left-6 lg:left-8 top-0 bottom-0 w-10 bg-gradient-to-r from-white to-transparent z-10" />
+          <div className="absolute left-2 sm:left-4 top-0 bottom-0 z-30 flex items-center">
+            <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-12 bg-gradient-to-r from-white via-white/90 to-transparent" />
             <button
               type="button"
               onClick={() => scrollByPage(-1)}
-              aria-label="Scroll categories left"
-              className="hidden lg:flex items-center justify-center absolute left-0 top-0 bottom-0 z-20 w-6 text-slate-500 hover:text-black cursor-pointer"
+              aria-label="Scroll left"
+              className="relative z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white shadow-md border border-gray-200 text-gray-700 hover:text-black hover:scale-105 active:scale-95 transition-all cursor-pointer"
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-3.5 w-3.5" />
             </button>
-          </>
+          </div>
         )}
 
+        {/* Scrollable Navigation Strip */}
         <nav
           ref={scrollRef}
           onScroll={updateScrollState}
           onMouseLeave={scheduleClose}
-          className="hidden lg:flex items-center gap-1 xl:gap-2 overflow-x-auto flex-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+          className="flex items-center gap-1.5 sm:gap-2 py-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden scroll-smooth"
         >
+          {/* Quick All Categories Pill */}
+          <button
+            type="button"
+            onClick={() => navigate("/products")}
+            className="group shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-gray-700 hover:text-indigo-600 bg-gray-50 hover:bg-indigo-50/80 border border-gray-200/70 transition-all duration-200 cursor-pointer shadow-xs"
+          >
+            <LayoutGrid className="w-3.5 h-3.5 text-indigo-500 group-hover:scale-110 transition-transform" />
+            <span>All Products</span>
+          </button>
+
+          <div className="h-4 w-px bg-gray-200 shrink-0 mx-1 hidden sm:block" />
+
+          {/* Top-level Category Pills */}
           {topLevel.map((top) => {
             const columns = childrenOf(top.id);
-            const hasMenu = columns.length > 0;
+            const hasChildren = columns.length > 0;
             const isOpen = openTopId === top.id;
+            const isActiveCategory = location.pathname === `/categories/${top.id}`;
 
             return (
               <div
                 key={top.id}
                 className="relative shrink-0"
-                onMouseEnter={(e) => hasMenu && openMenu(top.id, e.currentTarget)}
+                onMouseEnter={(e) => hasChildren && openMenu(top.id, e.currentTarget)}
               >
                 <button
                   type="button"
                   onClick={() => goTo(top.id)}
-                  className={`px-3 py-2 xl:px-4 xl:py-2.5 text-xs xl:text-sm font-bold tracking-tight whitespace-nowrap transition-colors duration-200 cursor-pointer ${
-                    isOpen ? "text-[var(--theme-primary)]" : "text-slate-600 hover:text-[var(--theme-primary)]"
+                  className={`group inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold tracking-tight whitespace-nowrap transition-all duration-200 cursor-pointer ${
+                    isActiveCategory
+                      ? "bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-500/20"
+                      : isOpen
+                      ? "bg-indigo-50 text-indigo-700 shadow-xs border border-indigo-200/60"
+                      : "text-gray-700 hover:text-indigo-600 hover:bg-gray-100/90 border border-transparent hover:border-gray-200/60"
                   }`}
                 >
-                  {top.name}
+                  <span>{top.name}</span>
+
+                  {hasChildren && (
+                    <ChevronDown
+                      className={`w-3 h-3 transition-transform duration-200 ${
+                        isOpen
+                          ? "rotate-180 text-indigo-600"
+                          : isActiveCategory
+                          ? "text-white/80"
+                          : "text-gray-400 group-hover:text-indigo-600"
+                      }`}
+                    />
+                  )}
                 </button>
               </div>
             );
           })}
         </nav>
 
+        {/* Right Scroll Button & Fade Mask */}
         {canScrollRight && (
-          <>
-            <div className="hidden lg:block pointer-events-none absolute right-4 sm:right-6 lg:right-8 top-0 bottom-0 w-10 bg-gradient-to-l from-white to-transparent z-10" />
+          <div className="absolute right-2 sm:right-4 top-0 bottom-0 z-30 flex items-center">
+            <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-white via-white/90 to-transparent" />
             <button
               type="button"
               onClick={() => scrollByPage(1)}
-              aria-label="Scroll categories right"
-              className="hidden lg:flex items-center justify-center absolute right-0 top-0 bottom-0 z-20 w-6 text-slate-500 hover:text-black cursor-pointer"
+              aria-label="Scroll right"
+              className="relative z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white shadow-md border border-gray-200 text-gray-700 hover:text-black hover:scale-105 active:scale-95 transition-all cursor-pointer"
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-3.5 w-3.5" />
             </button>
-          </>
+          </div>
         )}
       </div>
 
-      {/* Flyout is portaled to document.body (position: fixed, anchored to the trigger's
-          own rect captured in openMenu) rather than living inside the scrollable <nav>
-          above — overflow-x: auto on that row forces its vertical axis to clip too (see
-          the comment on menuPos), which would cut this panel off. */}
+      {/* Modern Glassmorphic Mega Menu Flyout */}
       {openTop && openColumns.length > 0 && menuPos &&
         createPortal(
           <div
-            className="fixed z-50 pt-2"
+            className="fixed z-50 transition-all duration-200 animate-in fade-in-50 zoom-in-98"
             style={{ left: menuPos.left, top: menuPos.top }}
             onMouseEnter={cancelClose}
             onMouseLeave={scheduleClose}
           >
-            <div className="flex gap-8 rounded-2xl border border-black/5 bg-white shadow-2xl shadow-black/10 px-6 py-5 min-w-[420px]">
-              {openColumns.map((col) => {
-                const grandchildren = childrenOf(col.id);
-                return (
-                  <div key={col.id} className="min-w-[140px]">
-                    <button
-                      type="button"
-                      onClick={() => goTo(col.id)}
-                      className="block text-left text-xs font-bold uppercase tracking-wide text-gray-900 hover:text-[var(--theme-primary)] mb-2 cursor-pointer whitespace-nowrap"
-                    >
-                      {col.name}
-                    </button>
-                    {grandchildren.length > 0 && (
-                      <ul className="space-y-1.5">
-                        {grandchildren.map((leaf) => (
-                          <li key={leaf.id}>
-                            <button
-                              type="button"
-                              onClick={() => goTo(leaf.id)}
-                              className="text-left text-xs text-gray-500 hover:text-[var(--theme-primary)] transition-colors cursor-pointer whitespace-nowrap"
-                            >
-                              {leaf.name}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+            <div className="rounded-2xl border border-gray-200/80 bg-white/98 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.18)] p-6 min-w-[380px] max-w-[760px] backdrop-blur-2xl ring-1 ring-black/5">
+              {/* Flyout Header */}
+              <div className="flex items-center justify-between pb-3.5 mb-4 border-b border-gray-100">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
+                    <Layers className="w-3.5 h-3.5" />
                   </div>
-                );
-              })}
+                  <div>
+                    <h4 className="text-xs font-bold text-gray-900 tracking-wide uppercase">
+                      {openTop.name}
+                    </h4>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => goTo(openTop.id)}
+                  className="group inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 cursor-pointer transition-colors"
+                >
+                  <span>Explore All</span>
+                  <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                </button>
+              </div>
+
+              {/* Subcategory Columns Grid */}
+              <div
+                className="grid gap-6"
+                style={{
+                  gridTemplateColumns: `repeat(${Math.min(openColumns.length, 3)}, minmax(140px, 1fr))`,
+                }}
+              >
+                {openColumns.map((col) => {
+                  const grandchildren = childrenOf(col.id);
+                  return (
+                    <div key={col.id} className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => goTo(col.id)}
+                        className="group flex items-center gap-1.5 text-left text-xs font-bold text-gray-900 hover:text-indigo-600 transition-colors cursor-pointer"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 group-hover:scale-125 transition-transform" />
+                        <span className="truncate">{col.name}</span>
+                      </button>
+
+                      {grandchildren.length > 0 && (
+                        <ul className="space-y-1.5 pl-3 border-l border-gray-100">
+                          {grandchildren.map((leaf) => (
+                            <li key={leaf.id}>
+                              <button
+                                type="button"
+                                onClick={() => goTo(leaf.id)}
+                                className="group flex items-center gap-1 text-left text-xs text-gray-500 hover:text-indigo-600 transition-all cursor-pointer py-0.5"
+                              >
+                                <span className="group-hover:translate-x-1 transition-transform truncate">
+                                  {leaf.name}
+                                </span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>,
-          document.body,
+          document.body
         )}
     </div>
   );
 };
 
 export default CategoryMegaMenu;
+

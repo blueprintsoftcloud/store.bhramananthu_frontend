@@ -106,3 +106,37 @@ export const calculateDiscountedPrice = (price: number | string, discount: numbe
 export const calculateDiscountAmount = (price: number | string, discount: number | string): number => {
   return calculateDiscountDetails(price, discount).discountAmount;
 };
+
+/**
+ * Formats any discount string or number into a standard, clean percentage badge text.
+ * Examples:
+ *   "20" -> "20% OFF"
+ *   20 -> "20% OFF"
+ *   "20%" -> "20% OFF"
+ *   "20% OFF" -> "20% OFF"
+ *   "50" -> "50% OFF"
+ *   "FLAT 30%" -> "FLAT 30%"
+ */
+export const formatDiscountBadge = (discount: string | number | null | undefined): string => {
+  if (discount === null || discount === undefined) return "";
+  const raw = String(discount).trim();
+  if (!raw) return "";
+
+  // Pure numeric string (e.g. "20", "50", 20)
+  if (/^\d+(\.\d+)?$/.test(raw)) {
+    return `${raw}% OFF`;
+  }
+
+  // Percentage without "OFF" (e.g. "20%", "50 %")
+  if (/^\d+(\.\d+)?\s*%$/i.test(raw)) {
+    return `${raw.replace(/\s*%/g, "")}% OFF`;
+  }
+
+  // Already has % OFF with extra spaces (e.g. "20 % off")
+  if (/^\d+(\.\d+)?\s*%\s*off$/i.test(raw)) {
+    const num = raw.match(/^\d+(\.\d+)?/)?.[0] || "";
+    return `${num}% OFF`;
+  }
+
+  return raw;
+};

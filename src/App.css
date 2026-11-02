@@ -4,7 +4,7 @@
    a hardcoded guess. This default only matters for the instant before that effect's
    first measurement lands. */
 :root {
-  --app-header-h: 104px;
+  --app-header-h: 112px;
 }
 
 input[type=number]::-webkit-inner-spin-button,
@@ -49,5 +49,17 @@ input[type=number]::-webkit-outer-spin-button {
 /* Leaflet map attribution ("Leaflet | © OpenStreetMap") — visible watermark on all maps */
 .leaflet-control-attribution {
   opacity: 1 !important;
+}
+
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
 }
 

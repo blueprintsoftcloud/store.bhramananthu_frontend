@@ -102,6 +102,7 @@ interface RecentOrder {
   userId?: { username?: string; email?: string } | null;
   shippingAddress?: {
     fullAddress?: string;
+    locality?: string;
     city?: string;
     state?: string;
     zipCode?: string;
@@ -152,26 +153,26 @@ const MOCK_DASHBOARD_DATA: DashboardData = {
     { status: "CANCELLED", count: 30 }
   ],
   topCategories: [
-    { id: "cat1", name: "Sarees & Lehengas", revenue: 2450000, unitsSold: 420 },
-    { id: "cat2", name: "Designer Salwars", revenue: 1250000, unitsSold: 280 },
-    { id: "cat3", name: "Anarkali Suits", revenue: 840000, unitsSold: 180 },
-    { id: "cat4", name: "Fusion Wear", revenue: 285900, unitsSold: 85 }
+    { id: "cat1", name: "Ear Balance & Vertigo", revenue: 2450000, unitsSold: 420 },
+    { id: "cat2", name: "Ayurvedic Oils", revenue: 1250000, unitsSold: 280 },
+    { id: "cat3", name: "Wellness & Relief", revenue: 840000, unitsSold: 180 },
+    { id: "cat4", name: "Herbal Care", revenue: 285900, unitsSold: 85 }
   ],
   topProducts: [
     {
-      product: { id: "p1", name: "Royal Kanchipuram Silk Saree", price: 15000, image: "https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=150" },
+      product: { id: "p1", name: "Bhramananthu Oil (3 Bottles Pack)", price: 899, image: "" },
       totalRevenue: 450000,
       totalQuantitySold: 30
     },
     {
-      product: { id: "p2", name: "Embellished Georgette Lehenga", price: 25000, image: "https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?w=150" },
+      product: { id: "p2", name: "Bhramananthu Oil (2 Bottles Pack)", price: 649, image: "" },
       totalRevenue: 375000,
       totalQuantitySold: 15
     }
   ],
   lowStockProducts: [
-    { id: "p3", name: "Floral Banarasi Dupatta", stock: 2, image: "https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?w=150", category: { name: "Dupattas" } },
-    { id: "p4", name: "Embroidered Kurta Set", stock: 0, image: "", category: { name: "Kurtas" } }
+    { id: "p3", name: "Bhramananthu Oil (Single 20ml)", stock: 2, image: "", category: { name: "Ear Balance & Vertigo" } },
+    { id: "p4", name: "Bhramananthu Trial Pack", stock: 0, image: "", category: { name: "Ayurvedic Oils" } }
   ],
   recentOrders: [
     {
@@ -224,6 +225,22 @@ const MOCK_DASHBOARD_DATA: DashboardData = {
     { method: "ONLINE", count: 942, revenue: 3825900 },
     { method: "COD", count: 314, revenue: 1000000 }
   ]
+};
+
+const DEFAULT_EMPTY_DASHBOARD: DashboardData = {
+  summary: {
+    revenue: { total: 0, thisMonth: 0, today: 0, growthPct: 0 },
+    orders: { total: 0, thisMonth: 0, today: 0, pending: 0, growthPct: 0 },
+    customers: { total: 0, thisMonth: 0, growthPct: 0 },
+    products: { total: 0 },
+  },
+  salesChart: [],
+  orderStatus: [],
+  topCategories: [],
+  topProducts: [],
+  lowStockProducts: [],
+  recentOrders: [],
+  paymentMethods: [],
 };
 
 // ── Bulletproof Formatting Helpers ───────────────────────────────────────────
@@ -343,14 +360,21 @@ const Home = () => {
     }
   };
 
-  const fetchDashboard = useCallback(async (range: "all" | "7d" | "30d" | "today") => {
+  const fetchDashboard = useCallback(async (range: "all" | "7d" | "30d" | "today" = "all") => {
     try {
-      const res = await api.get(`/admin/dashboard?range=${range}`);
-      setData(res.data);
-      setIsDemoMode(false);
-      setLastUpdated(new Date());
-    } catch (err) {
+      const activeRange = typeof range === "string" ? range : "all";
+      const res = await api.get(`/admin/dashboard?range=${activeRange}`);
+      if (res.data) {
+        setData(res.data);
+        setIsDemoMode(false);
+        setLastUpdated(new Date());
+      }
+    } catch (err: any) {
       console.error("Failed to load dashboard", err);
+      setData((prev) => prev || DEFAULT_EMPTY_DASHBOARD);
+      if (err.response?.status === 401) {
+        toast.error("Session expired or unauthorized. Please log in again.", { id: "admin-session-expired" });
+      }
     } finally {
       setLoading(false);
     }
@@ -468,8 +492,12 @@ const Home = () => {
         <p className="text-sm text-slate-500 text-center max-w-sm">Failed to sync live storefront database indicators. You can retry the connection or view the dashboard in offline Demo Mode.</p>
         <div className="flex gap-3 mt-2">
           <button
-            onClick={fetchDashboard}
-            className="px-5 py-2.5 bg-slate-900 text-white text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-slate-800 active:scale-95 transition-all shadow-sm"
+            type="button"
+            onClick={() => {
+              setLoading(true);
+              fetchDashboard(filterRange);
+            }}
+            className="px-5 py-2.5 bg-slate-900 text-white text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-slate-800 active:scale-95 transition-all shadow-sm cursor-pointer"
           >
             Retry Connection
           </button>
@@ -549,7 +577,7 @@ const Home = () => {
                   onClick={() => setFilterRange(tab.id as any)}
                   className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all duration-200 ${
                     filterRange === tab.id
-                      ? "bg-[var(--primary-color)] text-white shadow-xs"
+                      ? "bg-[#0B6B6B] text-white shadow-xs"
                       : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
                   }`}
                 >
@@ -787,7 +815,7 @@ const Home = () => {
                   }}>Activate Demo Mode to inspect sample metrics</span>
                 </div>
               ) : (
-                <ResponsiveContainer width="100%" height={280}>
+                <ResponsiveContainer width="100%" height={280} minWidth={0} minHeight={280}>
                   <BarChart data={filteredSalesChart} barGap={4}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                     <XAxis dataKey="date" tickFormatter={fmtDate} tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 600 }} axisLine={false} tickLine={false} />
@@ -828,7 +856,7 @@ const Home = () => {
             ) : (
               <div className="flex-1 flex flex-col sm:flex-row md:flex-col items-center justify-center gap-6 mt-2">
                 <div className="relative h-36 w-36 flex items-center justify-center flex-shrink-0">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                     <PieChart>
                       <Pie
                         data={topCategories}
@@ -1148,6 +1176,9 @@ const Home = () => {
                     </p>
                   )}
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 font-medium">
+                    {selectedOrder.shippingAddress.locality && (
+                      <span><span className="text-slate-400">Post Office: </span><strong className="text-slate-800">{selectedOrder.shippingAddress.locality}</strong></span>
+                    )}
                     {selectedOrder.shippingAddress.city && (
                       <span><span className="text-slate-400">City: </span>{selectedOrder.shippingAddress.city}</span>
                     )}

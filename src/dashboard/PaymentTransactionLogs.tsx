@@ -117,7 +117,7 @@ const METHOD_META: Record<string, { label: string; color: string; Icon: React.Co
   ONLINE: { label: "Online", color: "bg-blue-100 text-blue-700", Icon: WifiIcon },
   QR:     { label: "Pay with QR", color: "bg-purple-100 text-purple-700", Icon: QrCodeIcon },
   POD:    { label: "COD",    color: "bg-gray-100 text-gray-700", Icon: BanknotesIcon },
-  CASH:   { label: "Cash",   color: "bg-teal-100 text-teal-700", Icon: BanknotesIcon },
+  CASH:   { label: "Prepaid",color: "bg-teal-100 text-teal-700", Icon: BanknotesIcon },
 };
 
 const fmt = (iso: string) =>
@@ -487,7 +487,7 @@ export default function PaymentTransactionLogs() {
                   <option value="">All</option>
                   <option value="ONLINE">Online</option>
                   <option value="POD">Cash on Delivery (COD)</option>
-                  <option value="CASH">Cash (Admin-placed)</option>
+                  <option value="CASH">Prepaid (Admin-placed)</option>
                 </select>
               </div>
               <div>

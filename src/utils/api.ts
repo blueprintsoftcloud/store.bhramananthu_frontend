@@ -6,6 +6,7 @@ const api = axios.create({
   baseURL: domainUrl,
   withCredentials: true,
   headers: { "Content-Type": "application/json" },
+  timeout: 15000,
 });
 
 // Echo the double-submit CSRF cookie back as a header on every request — the backend
@@ -38,12 +39,29 @@ api.interceptors.request.use((config) => {
 // false-positive. Falls back to the per-tab-only guard on browsers without it
 // (Safari <15.4 etc.) rather than breaking outright.
 let refreshPromise: ReturnType<typeof api.post> | null = null;
+let lastRefreshTime = 0;
 
-const doRefresh = () => api.post("/auth/refresh").finally(() => {
-  refreshPromise = null;
-});
+const doRefresh = () =>
+  api
+    .post("/auth/refresh")
+    .then((res) => {
+      lastRefreshTime = Date.now();
+      if (res.data?.role) {
+        localStorage.setItem("userRole", res.data.role);
+      }
+      return res;
+    })
+    .finally(() => {
+      refreshPromise = null;
+    });
 
 export const refreshAccessToken = () => {
+  // If a refresh succeeded in the last 2.5s, cookies are already fresh in the browser.
+  // Resolve immediately so queued/trailing 401s retry against the new session cookie.
+  if (Date.now() - lastRefreshTime < 2500) {
+    return Promise.resolve({ data: { isLoggedIn: true, role: localStorage.getItem("userRole") } } as any);
+  }
+
   if (refreshPromise) return refreshPromise;
 
   if (typeof navigator !== "undefined" && "locks" in navigator) {
@@ -68,6 +86,7 @@ api.interceptors.response.use(
     const AUTH_NO_RETRY_URLS = [
       "/auth/refresh",
       "/auth/login",
+      "/auth/login/verify",
       "/auth/mobile/login",
       "/auth/mobile/register",
       "/auth/forgot-password",

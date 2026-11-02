@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import { MapPinIcon, BuildingStorefrontIcon, ChevronDownIcon, TruckIcon } from "@heroicons/react/24/outline";
 import { CheckCircle, AlertTriangle, Loader2, Trash2, Search, X, Check, Banknote, CreditCard, QrCode, Truck, Sparkles, Pencil, Link2, ExternalLink, RotateCcw } from "lucide-react";
-import { PulseLoader } from "react-spinners";
 import toast from "react-hot-toast";
 import { useAuth } from "../context/AuthContext";
 import { useStaffPermissions } from "../context/StaffPermissionContext";
@@ -1013,11 +1012,9 @@ export default function WarehouseSettings() {
       </div>
 
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-20 gap-4">
-          <div className="relative flex items-center justify-center w-0 h-0 pl-1.5">
-            <PulseLoader color="#000000" />
-          </div>
-          <p className="text-xs uppercase font-bold tracking-widest text-slate-400 font-mono mt-12 select-none">
+        <div className="flex flex-col items-center justify-center py-20 gap-3">
+          <Loader2 className="w-8 h-8 text-[#0B6B6B] animate-spin" />
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
             Loading warehouse settings...
           </p>
         </div>

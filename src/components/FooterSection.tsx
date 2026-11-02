@@ -40,9 +40,9 @@ interface FooterTemplateData {
 }
 
 const DEFAULT_LINK_COLUMNS: FooterLinkColumn[] = [
-  { heading: "Shop", links: [{ label: "New Arrivals", url: "/products" }, { label: "Best Sellers", url: "/products" }] },
+  { heading: "Shop", links: [{ label: "New Arrivals", url: "/" }, { label: "Best Sellers", url: "/" }] },
   { heading: "Company", links: [{ label: "Our Story", url: "/about" }, { label: "Terms & Conditions", url: "/terms" }] },
-  { heading: "Support", links: [{ label: "Help Center", url: "/help" }, { label: "Contact Us", url: "/contact" }] },
+  { heading: "Support", links: [{ label: "Help Center", url: "/help" }, { label: "Contact Us", url: "/contact" }, { label: "Shipping & Returns", url: "/shipping-policy" }] },
 ];
 
 interface FooterConfig {
@@ -57,49 +57,54 @@ interface FooterConfig {
   };
 }
 
+const PANAKKAL_INSTAGRAM_URL =
+  "https://www.instagram.com/panakkal_ayurveda_pharmacy?utm_source=ig_web_button_share_sheet&stkn=ZDNlZDc0MzIxNw==";
+const PANAKKAL_FACEBOOK_URL =
+  "https://www.facebook.com/share/1F3e3sUt4x/";
+
 const DEFAULT_CONFIG: FooterConfig = {
   activeTemplate: 1,
   templates: {
     "1": {
       tagline: "We are a design house dedicated to the art of Indian textile. Our mission is to keep the loom alive while dressing the future.",
-      instagramLink: "https://instagram.com",
-      facebookLink: "https://facebook.com",
+      instagramLink: PANAKKAL_INSTAGRAM_URL,
+      facebookLink: PANAKKAL_FACEBOOK_URL,
       twitterLink: "https://twitter.com",
       mailLink: "info@yourbrand.com",
     },
     "2": {
       tagline: "Crafting timeless Indian fashion for the modern world.",
-      instagramLink: "https://instagram.com",
-      facebookLink: "https://facebook.com",
+      instagramLink: PANAKKAL_INSTAGRAM_URL,
+      facebookLink: PANAKKAL_FACEBOOK_URL,
       twitterLink: "https://twitter.com",
       mailLink: "info@yourbrand.com",
     },
     "3": {
       tagline: "From our looms to your wardrobe — authentically Indian.",
       newsletterTitle: "Stay in the loop",
-      instagramLink: "https://instagram.com",
-      facebookLink: "https://facebook.com",
+      instagramLink: PANAKKAL_INSTAGRAM_URL,
+      facebookLink: PANAKKAL_FACEBOOK_URL,
       twitterLink: "https://twitter.com",
       mailLink: "info@yourbrand.com",
     },
     "4": {
       tagline: "Thank you for being part of our story.",
-      instagramLink: "https://instagram.com",
-      facebookLink: "https://facebook.com",
+      instagramLink: PANAKKAL_INSTAGRAM_URL,
+      facebookLink: PANAKKAL_FACEBOOK_URL,
       twitterLink: "https://twitter.com",
       mailLink: "info@yourbrand.com",
     },
     "5": {
       tagline: "Celebrate the season with us.",
-      instagramLink: "https://instagram.com",
-      facebookLink: "https://facebook.com",
+      instagramLink: PANAKKAL_INSTAGRAM_URL,
+      facebookLink: PANAKKAL_FACEBOOK_URL,
       twitterLink: "https://twitter.com",
       mailLink: "info@yourbrand.com",
     },
     "6": {
       tagline: "Designed with care, worn with pride.",
-      instagramLink: "https://instagram.com",
-      facebookLink: "https://facebook.com",
+      instagramLink: PANAKKAL_INSTAGRAM_URL,
+      facebookLink: PANAKKAL_FACEBOOK_URL,
       twitterLink: "https://twitter.com",
       mailLink: "info@yourbrand.com",
     },
@@ -191,8 +196,12 @@ function Template1({
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-16 lg:py-20">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-12 lg:gap-8">
           <div className="lg:col-span-2 space-y-6">
-            <div className="flex items-center gap-3">
-              {logoSrc && <img src={logoSrc} alt={companyName} className="h-10 w-auto object-contain filter brightness-125" />}
+            <div className="flex items-center gap-3.5">
+              {logoSrc && (
+                <div className="bg-white rounded-xl p-2 shadow-sm inline-flex items-center justify-center shrink-0">
+                  <img src={logoSrc} alt={companyName} className="h-8 w-auto max-w-[160px] object-contain" />
+                </div>
+              )}
               <h4 className="text-3xl font-bold tracking-tighter uppercase">{companyName}</h4>
             </div>
             <p className="text-white/50 text-sm leading-relaxed max-w-sm">{tagline}</p>
@@ -210,7 +219,7 @@ function Template1({
         <div className="max-w-[1400px] mx-auto px-4 py-6 flex flex-col sm:flex-row justify-between items-center text-xs text-white/30">
           <p>© {currentYear}{companyName ? ` ${companyName}` : ""}. All rights reserved.</p>
           <div className="flex gap-6 mt-4 sm:mt-0">
-            <a href="#" className="hover:text-white transition-colors">Privacy Policy</a>
+            <Link to="/privacy-policy" className="hover:text-white transition-colors">Privacy Policy</Link>
             <a href="#" className="hover:text-white transition-colors">Cookies</a>
           </div>
         </div>
@@ -267,7 +276,7 @@ function Template2({
         <div className="max-w-[1400px] mx-auto px-4 py-5 flex flex-col sm:flex-row justify-between items-center text-xs text-gray-400">
           <p>© {currentYear}{companyName ? ` ${companyName}` : ""}. All rights reserved.</p>
           <div className="flex gap-6 mt-3 sm:mt-0">
-            <a href="#" className="hover:text-gray-700 transition-colors">Privacy Policy</a>
+            <Link to="/privacy-policy" className="hover:text-gray-700 transition-colors">Privacy Policy</Link>
             <a href="#" className="hover:text-gray-700 transition-colors">Cookies</a>
           </div>
         </div>
@@ -279,13 +288,13 @@ function Template2({
 // ─── Template 3: Gradient Accent with Newsletter ──────────────────────────────
 
 function Template3({
-  companyName, logoSrc, tagline, newsletterTitle, currentYear,
+  companyName, logoSrc, tagline, currentYear,
   instagramLink, facebookLink, twitterLink, mailLink, linkColumns,
 }: {
   companyName: string;
   logoSrc: string | null;
   tagline: string;
-  newsletterTitle: string;
+  newsletterTitle?: string;
   currentYear: number;
   instagramLink?: string;
   facebookLink?: string;
@@ -293,42 +302,17 @@ function Template3({
   mailLink?: string;
   linkColumns?: FooterLinkColumn[];
 }) {
-  const [email, setEmail] = useState("");
-
   return (
     <footer className="bg-gradient-to-br from-indigo-950 via-slate-900 to-gray-950 text-white">
-      <div className="border-b border-white/10">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-10 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div>
-            <h3 className="text-xl font-bold text-white">{newsletterTitle}</h3>
-            <p className="text-white/50 text-sm mt-1">Get exclusive deals and new arrivals in your inbox.</p>
-          </div>
-          <form
-            onSubmit={(e) => { e.preventDefault(); setEmail(""); }}
-            className="flex gap-2 w-full md:w-auto min-w-[320px]"
-          >
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value.toLowerCase())}
-              placeholder="Enter your email"
-              className="flex-1 bg-white/10 border border-white/20 text-white placeholder-white/40 rounded-full px-5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--theme-primary)]"
-            />
-            <button
-              type="submit"
-              className="bg-[var(--theme-primary)] hover:bg-[var(--theme-primary-hover)] text-[var(--theme-primary-ink)] rounded-full px-5 py-2.5 text-sm font-semibold flex items-center gap-2 transition-colors"
-            >
-              Subscribe <Send className="w-3.5 h-3.5" />
-            </button>
-          </form>
-        </div>
-      </div>
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-12 lg:gap-8">
           <div className="lg:col-span-2 space-y-6">
-            <div className="flex items-center gap-3">
-              {logoSrc && <img src={logoSrc} alt={companyName} className="h-10 w-auto object-contain brightness-150" />}
+            <div className="flex items-center gap-3.5">
+              {logoSrc && (
+                <div className="bg-white rounded-xl p-2 shadow-sm inline-flex items-center justify-center shrink-0">
+                  <img src={logoSrc} alt={companyName} className="h-8 w-auto max-w-[160px] object-contain" />
+                </div>
+              )}
               <h4 className="text-2xl font-black tracking-tighter uppercase text-white">{companyName}</h4>
             </div>
             <p className="text-white/45 text-sm leading-relaxed max-w-sm">{tagline}</p>
@@ -346,7 +330,7 @@ function Template3({
         <div className="max-w-[1400px] mx-auto px-4 py-5 flex flex-col sm:flex-row justify-between items-center text-xs text-white/30">
           <p>© {currentYear}{companyName ? ` ${companyName}` : ""}. All rights reserved.</p>
           <div className="flex gap-6 mt-3 sm:mt-0">
-            <a href="#" className="hover:text-white transition-colors">Privacy Policy</a>
+            <Link to="/privacy-policy" className="hover:text-white transition-colors">Privacy Policy</Link>
             <a href="#" className="hover:text-white transition-colors">Cookies</a>
           </div>
         </div>
@@ -385,7 +369,7 @@ function Template4({
           <SocialIcon Icon={Mail} href={mailLink ? (mailLink.startsWith("mailto:") ? mailLink : `mailto:${mailLink}`) : undefined} />
         </div>
         <div className="flex gap-6 text-xs text-gray-400 mb-6">
-          <a href="#" className="hover:text-gray-700 transition-colors">Privacy Policy</a>
+          <Link to="/privacy-policy" className="hover:text-gray-700 transition-colors">Privacy Policy</Link>
           <a href="#" className="hover:text-gray-700 transition-colors">Cookies</a>
           <a href="#" className="hover:text-gray-700 transition-colors">Contact Us</a>
         </div>
@@ -419,7 +403,11 @@ function Template5({
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-16 lg:py-20">
         <div className="flex flex-col md:flex-row items-center md:items-start justify-between gap-10 mb-12">
           <div className="text-center md:text-left">
-            {logoSrc && <img src={logoSrc} alt={companyName} className="h-10 w-auto object-contain mb-4 mx-auto md:mx-0" />}
+            {logoSrc && (
+              <div className="inline-flex items-center justify-center p-2.5 bg-white rounded-xl shadow-sm mb-4 mx-auto md:mx-0">
+                <img src={logoSrc} alt={companyName} className="h-9 w-auto max-w-[180px] object-contain" />
+              </div>
+            )}
             <h4 className="text-2xl font-black tracking-tighter uppercase mb-3">{companyName}</h4>
             <p className="text-[var(--theme-primary-ink)]/75 text-sm leading-relaxed max-w-sm">{tagline}</p>
           </div>
@@ -462,21 +450,32 @@ function Template6({
   return (
     <footer className="bg-white text-gray-800 border-t border-gray-100">
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-16 lg:py-24">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-8">
-          <div>
-            {logoSrc && <img src={logoSrc} alt={companyName} className="h-9 w-auto object-contain mb-6" />}
-            <h4 className="text-4xl sm:text-5xl font-black tracking-tighter text-gray-900 leading-[1.05] mb-6 max-w-md">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start">
+          <div className="lg:col-span-6 space-y-6">
+            <div className="flex items-center gap-3">
+              {logoSrc && <img src={logoSrc} alt={companyName} className="h-10 w-auto object-contain" />}
+              {companyName && (
+                <span className="text-xl font-black uppercase tracking-tight text-gray-900">
+                  {companyName}
+                </span>
+              )}
+            </div>
+            <h4 className="text-3xl sm:text-4xl font-black tracking-tight text-gray-900 leading-tight max-w-lg">
               {tagline}
             </h4>
-            <div className="flex gap-3">
+            <div className="flex gap-3 pt-2">
               <SocialIcon Icon={Instagram} href={instagramLink} />
               <SocialIcon Icon={Facebook} href={facebookLink} />
               <SocialIcon Icon={Twitter} href={twitterLink} />
               <SocialIcon Icon={Mail} href={mailLink ? (mailLink.startsWith("mailto:") ? mailLink : `mailto:${mailLink}`) : undefined} />
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-6 lg:justify-items-end lg:text-right">
-            <LinkColumns columns={linkColumns} headingClassName="text-xs font-bold uppercase tracking-widest text-gray-400 mb-5" linkClassName="space-y-3 text-sm text-gray-700" />
+          <div className="lg:col-span-6 grid grid-cols-3 gap-6 sm:gap-10">
+            <LinkColumns
+              columns={linkColumns}
+              headingClassName="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4"
+              linkClassName="space-y-3 text-sm text-gray-700"
+            />
           </div>
         </div>
       </div>
@@ -484,7 +483,7 @@ function Template6({
         <div className="max-w-[1400px] mx-auto px-4 py-5 flex flex-col sm:flex-row justify-between items-center text-xs text-gray-400">
           <p>© {currentYear}{companyName ? ` ${companyName}` : ""}. All rights reserved.</p>
           <div className="flex gap-6 mt-3 sm:mt-0">
-            <a href="#" className="hover:text-gray-700 transition-colors">Privacy Policy</a>
+            <Link to="/privacy-policy" className="hover:text-gray-700 transition-colors">Privacy Policy</Link>
             <a href="#" className="hover:text-gray-700 transition-colors">Cookies</a>
           </div>
         </div>
@@ -531,6 +530,10 @@ const FooterSection = () => {
   const templateData = footerConfig.templates[active] ?? footerConfig.templates["1"];
   const tagline = templateData.tagline || branding.companyTagline || "";
   const currentYear = new Date().getFullYear();
+  const instagramLink =
+    templateData.instagramLink && templateData.instagramLink !== "https://instagram.com"
+      ? templateData.instagramLink
+      : PANAKKAL_INSTAGRAM_URL;
 
   if (footerConfig.activeTemplate === 2)
     return (
@@ -539,7 +542,7 @@ const FooterSection = () => {
         logoSrc={logoSrc}
         tagline={tagline}
         currentYear={currentYear}
-        instagramLink={templateData.instagramLink}
+        instagramLink={instagramLink}
         facebookLink={templateData.facebookLink}
         twitterLink={templateData.twitterLink}
         mailLink={templateData.mailLink}
@@ -552,9 +555,8 @@ const FooterSection = () => {
         companyName={companyName}
         logoSrc={logoSrc}
         tagline={tagline}
-        newsletterTitle={(templateData as any).newsletterTitle || "Stay in the loop"}
         currentYear={currentYear}
-        instagramLink={templateData.instagramLink}
+        instagramLink={instagramLink}
         facebookLink={templateData.facebookLink}
         twitterLink={templateData.twitterLink}
         mailLink={templateData.mailLink}
@@ -568,7 +570,7 @@ const FooterSection = () => {
         logoSrc={logoSrc}
         tagline={tagline}
         currentYear={currentYear}
-        instagramLink={templateData.instagramLink}
+        instagramLink={instagramLink}
         facebookLink={templateData.facebookLink}
         twitterLink={templateData.twitterLink}
         mailLink={templateData.mailLink}
@@ -581,7 +583,7 @@ const FooterSection = () => {
         logoSrc={logoSrc}
         tagline={tagline}
         currentYear={currentYear}
-        instagramLink={templateData.instagramLink}
+        instagramLink={instagramLink}
         facebookLink={templateData.facebookLink}
         twitterLink={templateData.twitterLink}
         mailLink={templateData.mailLink}
@@ -595,7 +597,7 @@ const FooterSection = () => {
         logoSrc={logoSrc}
         tagline={tagline}
         currentYear={currentYear}
-        instagramLink={templateData.instagramLink}
+        instagramLink={instagramLink}
         facebookLink={templateData.facebookLink}
         twitterLink={templateData.twitterLink}
         mailLink={templateData.mailLink}
@@ -608,7 +610,7 @@ const FooterSection = () => {
       logoSrc={logoSrc}
       tagline={tagline}
       currentYear={currentYear}
-      instagramLink={templateData.instagramLink}
+      instagramLink={instagramLink}
       facebookLink={templateData.facebookLink}
       twitterLink={templateData.twitterLink}
       mailLink={templateData.mailLink}

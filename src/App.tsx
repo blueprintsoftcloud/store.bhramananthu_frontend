@@ -15,7 +15,7 @@ import NoInternet from "./pages/NoInternet";
 import ScrollToTop from "./components/ScrollToTop";
 import { WishlistProvider } from "./context/WishlistContext";
 import { UserNotificationProvider } from "./context/UserNotificationContext";
-import { PulseLoader } from "react-spinners";
+import Loader from "./components/Loader";
 
 import { GLOBAL_COLORS } from "./utils/colors";
 
@@ -70,36 +70,69 @@ function AppContent() {
             <Toaster
                 position="top-right"
                 reverseOrder={false}
+                gutter={10}
+                containerStyle={{
+                  top: 24,
+                  right: 20,
+                  left: 20,
+                  zIndex: 99999,
+                }}
                 toastOptions={{
-                  duration: 3000,
+                  duration: 3500,
                   style: {
-                    borderRadius: "12px",
-                    fontFamily: "Inter, sans-serif",
-                    fontSize: "13px",
-                    background: "#ffffff",
-                    color: "#1e293b",
-                    border: "1px solid #e2e8f0",
-                    boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
+                    background: "#FAF8F2",
+                    color: "#172B2A",
+                    border: "1px solid #E6DFD5",
+                    borderRadius: "16px",
+                    padding: "12px 18px",
+                    fontSize: "13.5px",
+                    fontWeight: 500,
+                    fontFamily: "'Atkinson Hyperlegible', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+                    boxShadow: "0 10px 30px -4px rgba(23, 43, 42, 0.14), 0 4px 12px -2px rgba(23, 43, 42, 0.06)",
+                    letterSpacing: "-0.01em",
+                    maxWidth: "420px",
+                  },
+                  success: {
+                    duration: 3200,
+                    iconTheme: {
+                      primary: "#0B6B6B",
+                      secondary: "#FAF8F2",
+                    },
+                    style: {
+                      background: "#FAF8F2",
+                      border: "1px solid #CBE2DC",
+                      color: "#172B2A",
+                    },
+                  },
+                  error: {
+                    duration: 4000,
+                    iconTheme: {
+                      primary: "#C53030",
+                      secondary: "#FAF8F2",
+                    },
+                    style: {
+                      background: "#FAF8F2",
+                      border: "1px solid #F5D0CD",
+                      color: "#172B2A",
+                    },
+                  },
+                  loading: {
+                    iconTheme: {
+                      primary: "#0B6B6B",
+                      secondary: "#DDEDEA",
+                    },
+                    style: {
+                      background: "#FAF8F2",
+                      border: "1px solid #E6DFD5",
+                      color: "#172B2A",
+                    },
                   },
                 }}
               />
               <ToastDeduplicator />
               {isOnline ? (
                 user.isInitialLoad ? (
-                  <div className="flex h-screen w-screen flex-col items-center justify-center bg-slate-50 font-sans">
-                    <div className="flex flex-col items-center justify-center gap-6 text-center">
-  {/* Keeps the loader's alignment context stable */}
-  <div className="relative flex items-center justify-center w-0 h-0 pl-1.5">
-                          <PulseLoader color="#000000" />
-                        </div>
-                        
-                        {/* Static text layer locked right beneath the center line */}
-                        <p className="text-xs uppercase font-bold tracking-widest text-slate-400 font-mono mt-12 w-full text-center select-none">
-                          Loading...
-                        </p>
-                        
-                      </div>
-                  </div>
+                  <Loader message="Panakkal Ayurveda Pharmacy" fullScreen={true} />
                 ) : (
                   <AppRoutes />
                 )

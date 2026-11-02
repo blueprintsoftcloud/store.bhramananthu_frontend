@@ -3,6 +3,7 @@
 // Permission-aware: only renders sections the staff member can access.
 
 import React, { useEffect, useState, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import {
   BarChart,
@@ -65,6 +66,7 @@ interface RecentOrder {
   userId?: { username?: string; email?: string } | null;
   shippingAddress?: {
     fullAddress?: string;
+    locality?: string;
     city?: string;
     state?: string;
     zipCode?: string;
@@ -305,18 +307,29 @@ export default function StaffDashboardHome() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3 bg-white px-3 py-1.5 rounded-xl border border-slate-200/60 shadow-xs">
-            {lastUpdated && (
-              <span className="text-xs text-slate-400 font-mono font-medium">
-                Sync: {lastUpdated.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
-              </span>
+          <div className="flex items-center gap-3">
+            {hasPermission("ORDER_CREATE") && (
+              <Link
+                to="/staff-dashboard/place-order"
+                className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-xs active:scale-95 transition-all"
+              >
+                <ShoppingCart className="w-3.5 h-3.5" />
+                <span>Place Order</span>
+              </Link>
             )}
-            <button
-              onClick={() => { setLoading(true); fetchDashboard(); }}
-              className="p-1.5 bg-slate-50 border border-slate-100 hover:bg-slate-100 text-slate-600 hover:text-slate-900 rounded-lg shadow-2xs transition-all active:scale-95"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-            </button>
+            <div className="flex items-center gap-3 bg-white px-3 py-1.5 rounded-xl border border-slate-200/60 shadow-xs">
+              {lastUpdated && (
+                <span className="text-xs text-slate-400 font-mono font-medium">
+                  Sync: {lastUpdated.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              )}
+              <button
+                onClick={() => { setLoading(true); fetchDashboard(); }}
+                className="p-1.5 bg-slate-50 border border-slate-100 hover:bg-slate-100 text-slate-600 hover:text-slate-900 rounded-lg shadow-2xs transition-all active:scale-95"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -820,6 +833,9 @@ export default function StaffDashboardHome() {
                     </p>
                   )}
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 font-medium">
+                    {selectedOrder.shippingAddress.locality && (
+                      <span><span className="text-slate-400">Post Office: </span><strong className="text-slate-800">{selectedOrder.shippingAddress.locality}</strong></span>
+                    )}
                     {selectedOrder.shippingAddress.city && (
                       <span><span className="text-slate-400">City: </span>{selectedOrder.shippingAddress.city}</span>
                     )}

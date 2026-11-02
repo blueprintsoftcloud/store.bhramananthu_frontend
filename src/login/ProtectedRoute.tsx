@@ -1,5 +1,5 @@
 import React, { ReactNode } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 interface ProtectedRouteProps {
@@ -8,7 +8,7 @@ interface ProtectedRouteProps {
   requiredRoles?: string[];
   /**
    * Where to redirect when the user IS authenticated but has the wrong role.
-   * Defaults to "/" (customer home) when not specified.
+   * If not specified, automatically redirects to the user's appropriate role dashboard.
    */
   redirectTo?: string;
   /**
@@ -21,17 +21,29 @@ interface ProtectedRouteProps {
   unauthenticatedRedirectTo?: string;
 }
 
+const getRoleHome = (role?: string | null): string => {
+  const normalized = role?.toUpperCase();
+  if (normalized === "SUPER_ADMIN") return "/super-admin-dashboard";
+  if (normalized === "ADMIN") return "/admin-dashboard";
+  if (normalized === "STAFF") return "/staff-dashboard";
+  return "/";
+};
+
 const ProtectedRoute = ({
   children,
   requiredRoles,
-  redirectTo = "/",
-  unauthenticatedRedirectTo = "/login",
+  redirectTo,
+  unauthenticatedRedirectTo = "/",
 }: ProtectedRouteProps) => {
   const { user } = useAuth();
+  const location = useLocation();
 
   if (!user || user.isInitialLoad) return null;
 
-  if (!user.isAuthenticated) return <Navigate to={unauthenticatedRedirectTo} replace />;
+  if (!user.isAuthenticated) {
+    if (location.pathname === unauthenticatedRedirectTo) return null;
+    return <Navigate to={unauthenticatedRedirectTo} replace />;
+  }
 
   if (
     requiredRoles &&
@@ -41,7 +53,10 @@ const ProtectedRoute = ({
         .map((r) => r.toUpperCase())
         .includes(user.role.toUpperCase()))
   ) {
-    return <Navigate to={redirectTo} replace />;
+    const target = redirectTo || getRoleHome(user.role);
+    // Never redirect to the current pathname (prevents infinite loop)
+    if (location.pathname === target) return null;
+    return <Navigate to={target} replace />;
   }
 
   return <>{children}</>;

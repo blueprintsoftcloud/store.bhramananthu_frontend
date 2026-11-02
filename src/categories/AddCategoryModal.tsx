@@ -29,6 +29,7 @@ import {
   Maximize2,
   Camera,
   CheckCircle,
+  SlidersHorizontal,
 } from "lucide-react";
 
 interface ValidationField {
@@ -41,6 +42,7 @@ interface CategoryFormData {
   name: string;
   description: string;
   image: File | null;
+  showFilters: boolean;
 }
 
 interface CategoryValidation {
@@ -50,7 +52,7 @@ interface CategoryValidation {
   image: ValidationField;
 }
 
-const EMPTY_FORM: CategoryFormData = { code: "", name: "", description: "", image: null };
+const EMPTY_FORM: CategoryFormData = { code: "", name: "", description: "", image: null, showFilters: true };
 const MAX_IMAGE_SIZE = 1 * 1024 * 1024; // 1MB
 
 const FieldError = ({ show, message }: { show: boolean; message: string }) =>
@@ -175,7 +177,8 @@ export default function AddCategoryModal({ isOpen, onClose, parentId, parentName
       const file = files?.[0];
       if (!file) return;
 
-      if (file.size > MAX_IMAGE_SIZE) {
+      const compressed = await compressImage(file);
+      if (compressed.size > MAX_IMAGE_SIZE) {
         toast.dismiss();
         toast.error("Image size must be less than 1 MB.");
         setFormData((prev) => ({ ...prev, image: null }));
@@ -185,7 +188,6 @@ export default function AddCategoryModal({ isOpen, onClose, parentId, parentName
         return;
       }
 
-      const compressed = await compressImage(file);
       if (imagePreview) URL.revokeObjectURL(imagePreview);
       const url = URL.createObjectURL(compressed);
       setFormData((prev) => ({ ...prev, image: compressed }));
@@ -225,6 +227,7 @@ export default function AddCategoryModal({ isOpen, onClose, parentId, parentName
       data.append("name", formData.name);
       data.append("description", formData.description);
       if (formData.image) data.append("image", formData.image);
+      data.append("showFilters", String(formData.showFilters));
       // FormData.append('parentId', undefined) would stringify to the literal "undefined" —
       // only append it at all when a parent context actually exists; the backend
       // defaults to top-level (null) when the field is absent.
@@ -462,6 +465,37 @@ export default function AddCategoryModal({ isOpen, onClose, parentId, parentName
                     <FieldError show={touched.image && !validation.image.isValid} message={validation.image.message} />
                   </div>
                 )}
+
+                {/* Storefront Filters Setting */}
+                <div className="flex items-center justify-between p-4 rounded-xl border border-slate-200 bg-slate-50/50 transition-colors">
+                  <div className="space-y-0.5 pr-4">
+                    <label
+                      onClick={() => setFormData((prev) => ({ ...prev, showFilters: !prev.showFilters }))}
+                      className="text-sm font-semibold text-slate-800 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <SlidersHorizontal className="h-4 w-4 text-indigo-600" />
+                      Storefront Product Filters
+                    </label>
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                      Enable sidebar filters (ratings, price range & attributes) on this category's storefront page.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={formData.showFilters}
+                    onClick={() => setFormData((prev) => ({ ...prev, showFilters: !prev.showFilters }))}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      formData.showFilters ? "bg-indigo-600" : "bg-slate-300"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                        formData.showFilters ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
               </div>
 
               {/* RIGHT — live preview, mirrors the real card markup from Listcategory.tsx */}

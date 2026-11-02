@@ -1016,16 +1016,12 @@ const CancellationFeedbackSection = ({
   onDeleteFeedback: (feedback: CancellationFeedbackDoc) => void;
 }) => {
   const [selectedReasonFilter, setSelectedReasonFilter] = useState("");
-  const [selectedMethodFilter, setSelectedMethodFilter] = useState("");
   const [selectedFeedback, setSelectedFeedback] = useState<CancellationFeedbackDoc | null>(null);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
 
   const filteredFeedbacks = feedbacks.filter((fb) => {
     if (selectedReasonFilter && !fb.selectedReasons.includes(selectedReasonFilter)) {
-      return false;
-    }
-    if (selectedMethodFilter && fb.paymentMethod.toUpperCase() !== selectedMethodFilter.toUpperCase()) {
       return false;
     }
     return true;
@@ -1035,22 +1031,10 @@ const CancellationFeedbackSection = ({
   const startIndex = (page - 1) * PAGE_SIZE;
   const paginatedFeedbacks = filteredFeedbacks.slice(startIndex, startIndex + PAGE_SIZE);
 
-  const handleMethodChange = (val: string) => {
-    setSelectedMethodFilter(val);
-    setPage(1);
-  };
-
   const handleReasonChange = (val: string) => {
     setSelectedReasonFilter(val);
     setPage(1);
   };
-
-  const paymentMethodOptions: DropdownOption[] = [
-    { value: "", label: "All Payment Methods", icon: <CreditCardIcon className="w-3.5 h-3.5" /> },
-    { value: "ONLINE", label: "Online (Razorpay / UPI)", icon: <CreditCardIcon className="w-3.5 h-3.5 text-blue-500" /> },
-    { value: "POD", label: "Cash on Delivery (COD)", icon: <BanknotesIcon className="w-3.5 h-3.5 text-amber-500" /> },
-    { value: "QR", label: "QR Code Payment", icon: <TagIcon className="w-3.5 h-3.5 text-purple-500" /> },
-  ];
 
   const reasonOptions: DropdownOption[] = [
     { value: "", label: "All Reasons", icon: <FunnelIcon className="w-3.5 h-3.5" /> },
@@ -1085,7 +1069,7 @@ const CancellationFeedbackSection = ({
       </div>
 
       {/* Minimal Key Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="p-3.5 rounded-xl bg-white border border-slate-100 shadow-xs">
           <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Total Surveys</p>
           <p className="text-xl font-bold text-slate-900 mt-0.5 tabular-nums">{analytics.totalFeedbacks}</p>
@@ -1101,30 +1085,11 @@ const CancellationFeedbackSection = ({
             {analytics.reasonDistribution[0] ? `${analytics.reasonDistribution[0].percentage}% of responses` : "No data"}
           </p>
         </div>
-
-        <div className="p-3.5 rounded-xl bg-white border border-slate-100 shadow-xs">
-          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Abandoned Cart Total</p>
-          <p className="text-xl font-bold text-slate-900 mt-0.5 tabular-nums">
-            ₹{analytics.totalAbandonedAmount.toLocaleString("en-IN")}
-          </p>
-          <p className="text-[11px] text-slate-500 mt-0.5">Unfinished checkout value</p>
-        </div>
       </div>
-
-
 
       {/* Filter Bar */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Payment Method Dropdown */}
-          <CustomFilterDropdown
-            label="Payment Method"
-            value={selectedMethodFilter}
-            options={paymentMethodOptions}
-            onChange={handleMethodChange}
-            icon={CreditCardIcon}
-          />
-
           {/* Cancellation Reasons Dropdown */}
           {analytics.reasonDistribution.length > 0 && (
             <CustomFilterDropdown
@@ -1137,17 +1102,16 @@ const CancellationFeedbackSection = ({
           )}
 
           {/* Reset Filters Trigger */}
-          {(selectedReasonFilter || selectedMethodFilter) && (
+          {selectedReasonFilter && (
             <button
               onClick={() => {
                 setSelectedReasonFilter("");
-                setSelectedMethodFilter("");
                 setPage(1);
               }}
               className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50 border border-rose-100 transition cursor-pointer"
             >
               <XMarkIcon className="w-3.5 h-3.5" />
-              Reset Filters
+              Reset Filter
             </button>
           )}
         </div>
@@ -1175,8 +1139,8 @@ const CancellationFeedbackSection = ({
           </div>
           <h4 className="text-xs font-bold text-slate-700">No feedback entries found</h4>
           <p className="text-[11px] text-slate-400 mt-0.5 max-w-xs">
-            {selectedReasonFilter || selectedMethodFilter
-              ? "No responses match the active filters"
+            {selectedReasonFilter
+              ? "No responses match the active filter"
               : "When customers exit or cancel purchases, their feedback will appear here"}
           </p>
         </div>
@@ -1317,20 +1281,40 @@ const CancellationFeedbackSection = ({
                 </button>
 
                 <div className="flex items-center gap-1 px-1">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((pg) => (
-                    <button
-                      key={pg}
-                      type="button"
-                      onClick={() => setPage(pg)}
-                      className={`w-7 h-7 rounded-lg text-xs font-semibold flex items-center justify-center transition cursor-pointer ${
-                        page === pg
-                          ? "bg-slate-900 text-white shadow-xs"
-                          : "text-slate-600 hover:bg-slate-100"
-                      }`}
-                    >
-                      {pg}
-                    </button>
-                  ))}
+                  {(() => {
+                    const pages: (number | "...")[] = [];
+                    if (totalPages <= 7) {
+                      for (let i = 1; i <= totalPages; i++) pages.push(i);
+                    } else {
+                      pages.push(1);
+                      if (page > 3) pages.push("...");
+                      const startPage = Math.max(2, page - 1);
+                      const endPage = Math.min(totalPages - 1, page + 1);
+                      for (let i = startPage; i <= endPage; i++) pages.push(i);
+                      if (page < totalPages - 2) pages.push("...");
+                      pages.push(totalPages);
+                    }
+                    return pages.map((pg, idx) =>
+                      pg === "..." ? (
+                        <span key={`ellipsis-${idx}`} className="w-7 h-7 flex items-center justify-center text-xs font-bold text-slate-400 select-none">
+                          …
+                        </span>
+                      ) : (
+                        <button
+                          key={pg}
+                          type="button"
+                          onClick={() => setPage(pg as number)}
+                          className={`w-7 h-7 rounded-lg text-xs font-semibold flex items-center justify-center transition cursor-pointer ${
+                            page === pg
+                              ? "bg-slate-900 text-white shadow-xs"
+                              : "text-slate-600 hover:bg-slate-100"
+                          }`}
+                        >
+                          {pg}
+                        </button>
+                      )
+                    );
+                  })()}
                 </div>
 
                 <button

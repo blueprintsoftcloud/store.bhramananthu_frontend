@@ -2,7 +2,6 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../utils/api";
 import toast from "react-hot-toast";
-import { PulseLoader } from "react-spinners";
 import { normalizeCategory } from "../utils/category";
 import { ATTRIBUTE_TYPES } from "../constants/attributeTypes";
 import { useAuth } from "../context/AuthContext";
@@ -27,6 +26,7 @@ import {
   Star,
   IndianRupee,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -383,22 +383,16 @@ export const CategoryAttributes: React.FC<{
   if (loading) {
     if (inline) {
       return (
-        <div className="py-10 text-center gap-6 flex flex-col items-center justify-center">
-          <div className="relative flex items-center justify-center w-0 h-0 pl-1.5">
-            <PulseLoader color="#000000" />
-          </div>
-          <p className="text-xs uppercase font-bold tracking-widest text-slate-400 font-mono mt-12 w-full text-center select-none">Loading attributes…</p>
+        <div className="py-10 text-center flex flex-col items-center justify-center gap-2">
+          <Loader2 className="w-7 h-7 text-[#0B6B6B] animate-spin" />
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Loading attributes…</p>
         </div>
       );
     }
     return (
-      <div className="min-h-screen bg-[#f3f4f9] flex items-center justify-center font-sans antialiased">
-        <div className="flex flex-col items-center justify-center gap-6 text-center">
-          <div className="relative flex items-center justify-center w-0 h-0 pl-1.5">
-            <PulseLoader color="#000000" />
-          </div>
-          <p className="text-xs uppercase font-bold tracking-widest text-slate-400 font-mono mt-12 w-full text-center select-none">Loading attributes…</p>
-        </div>
+      <div className="min-h-screen bg-[#f3f4f9] flex flex-col items-center justify-center font-sans antialiased gap-3">
+        <Loader2 className="w-8 h-8 text-[#0B6B6B] animate-spin" />
+        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Loading attributes…</p>
       </div>
     );
   }

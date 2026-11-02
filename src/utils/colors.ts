@@ -1,9 +1,9 @@
 // Centralized global color configuration for the boutique application.
 // Edit these hex codes to globally change theme accents and backgrounds.
 export const GLOBAL_COLORS = {
-  // Sidebar colors - solid #ffffff
-  sidebarStart: "#ffffff",
-  sidebarEnd: "#ffffff",
+  // Sidebar colors - Soft Panakkal Mint / Sage
+  sidebarStart: "#EBF5F3",
+  sidebarEnd: "#E4F0EE",
   
   // Primary brand buttons & accent colors
   primary: "#C74B17",

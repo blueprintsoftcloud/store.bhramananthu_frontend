@@ -31,6 +31,7 @@ import {
   Eye,
   Maximize2,
   Camera,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useStaffPermissions } from "../context/StaffPermissionContext";
@@ -49,6 +50,7 @@ interface ListCategory {
   description?: string;
   image?: string;
   isActive?: boolean;
+  showFilters?: boolean;
   createdAt?: string;
   parentId?: string | null;
   directProductCount?: number;
@@ -60,6 +62,7 @@ interface CategoryFormData {
   name: string;
   description: string;
   image: File | null;
+  showFilters: boolean;
 }
 
 // Enhanced Loader Component
@@ -491,10 +494,38 @@ const ListCategory = () => {
       name: category.name,
       description: category.description ?? "",
       image: null,
+      showFilters: category.showFilters !== false,
     });
     // Set preview to the existing image URL
     setImagePreview(category.image || "");
     setShowEditModal(true);
+  };
+
+  const handleToggleFilters = async (category: ListCategory, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const categoryId = category._id ?? category.id;
+    if (!categoryId) return;
+    const currentVal = category.showFilters !== false;
+    const nextVal = !currentVal;
+
+    // Optimistic UI update
+    setCategories((prev) =>
+      prev.map((c) => ((c._id ?? c.id) === categoryId ? { ...c, showFilters: nextVal } : c))
+    );
+    if (selectedCategory && (selectedCategory._id ?? selectedCategory.id) === categoryId) {
+      setSelectedCategory((prev) => (prev ? { ...prev, showFilters: nextVal } : null));
+    }
+
+    try {
+      await api.patch(`/category/${categoryId}/filters-toggle`, { showFilters: nextVal });
+      toast.success(`Storefront filters ${nextVal ? "enabled" : "disabled"} for "${category.name}"`);
+    } catch (err: any) {
+      // Revert on error
+      setCategories((prev) =>
+        prev.map((c) => ((c._id ?? c.id) === categoryId ? { ...c, showFilters: currentVal } : c))
+      );
+      toast.error(err?.response?.data?.message || "Failed to toggle filter status");
+    }
   };
 
   const handleDeleteClick = (category: ListCategory) => {
@@ -516,18 +547,18 @@ const ListCategory = () => {
     if (name === "image") {
       const file = files?.[0];
       if (file) {
-        if (file.size > 1024 * 1024) {
+        // Revoke old URL to prevent memory leaks if switching images
+        if (imagePreview && imagePreview.startsWith("blob:")) {
+          URL.revokeObjectURL(imagePreview);
+        }
+        const compressed = await compressImage(file);
+        if (compressed.size > 1024 * 1024) {
           toast.dismiss();
           toast.error("Image size must be less than 1 MB.");
           const input = document.getElementById("updateImage") as HTMLInputElement | null;
           if (input) input.value = "";
           return;
         }
-        // Revoke old URL to prevent memory leaks if switching images
-        if (imagePreview && imagePreview.startsWith("blob:")) {
-          URL.revokeObjectURL(imagePreview);
-        }
-        const compressed = await compressImage(file);
         setFormData((prev) => ({ ...prev, image: compressed }));
         const previewUrl = URL.createObjectURL(compressed);
         setImagePreview(previewUrl);
@@ -585,7 +616,8 @@ const ListCategory = () => {
     const noTextChange =
       formData.code === selectedCategory.code &&
       formData.name === selectedCategory.name &&
-      formData.description === selectedCategory.description;
+      formData.description === selectedCategory.description &&
+      formData.showFilters === (selectedCategory.showFilters !== false);
 
     const noImageChange = !formData.image; // no new image selected
 
@@ -604,6 +636,7 @@ const ListCategory = () => {
       data.append("code", formData.code);
       data.append("name", formData.name);
       data.append("description", formData.description);
+      data.append("showFilters", String(formData.showFilters));
 
       if (formData.image) {
         data.append("image", formData.image);
@@ -1137,7 +1170,23 @@ const ListCategory = () => {
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-100 bg-indigo-50/60 text-xs font-medium text-indigo-600 hover:bg-indigo-100 hover:border-indigo-200 transition-colors"
                       >
                         <Tag className="h-3.5 w-3.5" />
-                        Filters
+                        Attributes
+                      </button>
+                    )}
+
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleToggleFilters(cat, e)}
+                        title={cat.showFilters !== false ? "Storefront filters are active. Click to disable." : "Storefront filters are disabled. Click to enable."}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
+                          cat.showFilters !== false
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                            : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100"
+                        }`}
+                      >
+                        <SlidersHorizontal className="h-3.5 w-3.5" />
+                        <span>Filters: {cat.showFilters !== false ? "On" : "Off"}</span>
                       </button>
                     )}
                   </div>
@@ -1364,6 +1413,37 @@ const ListCategory = () => {
                         />
                       </div>
                     )}
+
+                    {/* Storefront Filters Setting */}
+                    <div className="flex items-center justify-between p-4 rounded-xl border border-slate-200 bg-slate-50/50 transition-colors">
+                      <div className="space-y-0.5 pr-4">
+                        <label
+                          onClick={() => setFormData((prev) => ({ ...prev, showFilters: !prev.showFilters }))}
+                          className="text-sm font-semibold text-slate-800 flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <SlidersHorizontal className="h-4 w-4 text-indigo-600" />
+                          Storefront Product Filters
+                        </label>
+                        <p className="text-xs text-slate-500 leading-relaxed">
+                          Enable sidebar filters (ratings, price range & attributes) on this category's storefront page.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={formData.showFilters}
+                        onClick={() => setFormData((prev) => ({ ...prev, showFilters: !prev.showFilters }))}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          formData.showFilters ? "bg-indigo-600" : "bg-slate-300"
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                            formData.showFilters ? "translate-x-5" : "translate-x-0"
+                          }`}
+                        />
+                      </button>
+                    </div>
                   </div>
 
                   {/* RIGHT — live preview, mirrors the real card markup from the grid above */}

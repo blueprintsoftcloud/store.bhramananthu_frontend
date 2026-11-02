@@ -21,12 +21,15 @@ interface Props {
 const defaultFormat = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 
 const PriceRangeSlider: React.FC<Props> = ({ bounds, value, onChange, formatValue = defaultFormat }) => {
-  const { min: boundMin, max: boundMax } = bounds;
-  const [selectedMin, selectedMax] = value;
+  const boundMin = bounds.min;
+  const boundMax = Math.max(bounds.max, boundMin + 1);
   const span = Math.max(boundMax - boundMin, 1);
 
-  const pctMin = ((selectedMin - boundMin) / span) * 100;
-  const pctMax = ((selectedMax - boundMin) / span) * 100;
+  const selectedMin = Math.max(boundMin, Math.min(value?.[0] ?? boundMin, boundMax));
+  const selectedMax = Math.max(boundMin, Math.min(value?.[1] ?? boundMax, boundMax));
+
+  const pctMin = Math.max(0, Math.min(100, ((selectedMin - boundMin) / span) * 100));
+  const pctMax = Math.max(0, Math.min(100, ((selectedMax - boundMin) / span) * 100));
 
   const handleMinChange = (raw: number) => {
     const next = Math.min(raw, selectedMax);
@@ -38,17 +41,15 @@ const PriceRangeSlider: React.FC<Props> = ({ bounds, value, onChange, formatValu
     onChange([selectedMin, next]);
   };
 
-  if (boundMax <= boundMin) return null;
-
   return (
-    <div>
-      <div className="relative h-5 flex items-center">
+    <div className="pt-2 pb-1">
+      <div className="relative h-4 flex items-center">
         {/* Track */}
-        <div className="absolute inset-x-0 h-1.5 rounded-full bg-gray-200" />
+        <div className="absolute inset-x-0 h-1 rounded-full bg-gray-200" />
         {/* Selected range fill */}
         <div
-          className="absolute h-1.5 rounded-full bg-gray-900"
-          style={{ left: `${pctMin}%`, right: `${100 - pctMax}%` }}
+          className="absolute h-1 rounded-full bg-black"
+          style={{ left: `${pctMin}%`, width: `${Math.max(pctMax - pctMin, 0)}%` }}
         />
         <input
           type="range"
@@ -56,7 +57,7 @@ const PriceRangeSlider: React.FC<Props> = ({ bounds, value, onChange, formatValu
           max={boundMax}
           value={selectedMin}
           onChange={(e) => handleMinChange(Number(e.target.value))}
-          className="range-thumb absolute inset-x-0 w-full appearance-none bg-transparent pointer-events-none"
+          className="range-thumb absolute inset-x-0 w-full appearance-none bg-transparent pointer-events-none cursor-pointer z-10"
           aria-label="Minimum price"
         />
         <input
@@ -65,45 +66,52 @@ const PriceRangeSlider: React.FC<Props> = ({ bounds, value, onChange, formatValu
           max={boundMax}
           value={selectedMax}
           onChange={(e) => handleMaxChange(Number(e.target.value))}
-          className="range-thumb absolute inset-x-0 w-full appearance-none bg-transparent pointer-events-none"
+          className="range-thumb absolute inset-x-0 w-full appearance-none bg-transparent pointer-events-none cursor-pointer z-20"
           aria-label="Maximum price"
         />
       </div>
 
-      <div className="flex items-center justify-between mt-3 text-xs font-semibold text-gray-700">
-        <span className="px-2.5 py-1 rounded-lg bg-gray-100">{formatValue(selectedMin)}</span>
-        <span className="text-gray-300">to</span>
-        <span className="px-2.5 py-1 rounded-lg bg-gray-100">
+      {/* Min to Max price badges (matching FEHNY reference) */}
+      <div className="flex items-center justify-between mt-3 text-xs">
+        <span className="inline-flex items-center justify-center px-2.5 py-1 bg-gray-100 text-gray-800 rounded text-xs font-medium border border-gray-200/60 min-w-[58px] text-center select-none">
+          {formatValue(selectedMin)}
+        </span>
+        <span className="text-xs text-gray-400 font-normal px-2 select-none">to</span>
+        <span className="inline-flex items-center justify-center px-2.5 py-1 bg-gray-100 text-gray-800 rounded text-xs font-medium border border-gray-200/60 min-w-[58px] text-center select-none">
           {selectedMax >= boundMax ? `${formatValue(selectedMax)}+` : formatValue(selectedMax)}
         </span>
       </div>
 
-      {/* Thumb styling lives here rather than a global stylesheet — it's specific to
-          this one component and keeping it colocated avoids a growing global CSS file
-          for every one-off widget. Each thumb re-enables pointer-events on itself only,
-          so the two overlapping inputs' tracks don't intercept each other's drags. */}
+      {/* Solid black thumb styles matching reference */}
       <style>{`
         .range-thumb::-webkit-slider-thumb {
           appearance: none;
           pointer-events: auto;
-          width: 16px;
-          height: 16px;
+          width: 14px;
+          height: 14px;
           border-radius: 9999px;
-          background: #111827;
-          border: 2px solid white;
+          background: #000000;
+          border: 2px solid #ffffff;
           box-shadow: 0 1px 3px rgba(0,0,0,0.3);
           cursor: pointer;
-          margin-top: 0;
+          transition: transform 0.1s ease;
+        }
+        .range-thumb::-webkit-slider-thumb:hover {
+          transform: scale(1.2);
         }
         .range-thumb::-moz-range-thumb {
           pointer-events: auto;
-          width: 16px;
-          height: 16px;
+          width: 14px;
+          height: 14px;
           border-radius: 9999px;
-          background: #111827;
-          border: 2px solid white;
+          background: #000000;
+          border: 2px solid #ffffff;
           box-shadow: 0 1px 3px rgba(0,0,0,0.3);
           cursor: pointer;
+          transition: transform 0.1s ease;
+        }
+        .range-thumb::-moz-range-thumb:hover {
+          transform: scale(1.2);
         }
         .range-thumb::-webkit-slider-runnable-track { background: transparent; }
         .range-thumb::-moz-range-track { background: transparent; }

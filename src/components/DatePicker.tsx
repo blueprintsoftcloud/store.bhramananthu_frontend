@@ -170,6 +170,7 @@ export default function DatePicker({
       {open && coords && createPortal(
         <div
           ref={popupRef}
+          data-datepicker-popup="true"
           style={{ position: "fixed", top: coords.top, left: coords.left, width: POPUP_WIDTH }}
           className="z-[9999] bg-white rounded-2xl shadow-2xl border border-gray-100 p-4"
         >

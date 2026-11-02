@@ -41,7 +41,7 @@ export function OrganizationJsonLd() {
     "@context": "https://schema.org",
     "@type": "WebSite",
     name: branding.companyName,
-    alternateName: ["Amore", "amorewebstore.com", branding.companyName],
+    alternateName: ["Bhramananthu", "store.bhramananthu.com", branding.companyName],
     url: origin,
   };
 

@@ -41,6 +41,8 @@ interface ProductVariantsModalProps {
     purchasePrice?: number | null;
     category?: { id?: string; name?: string; code?: string } | string;
     attributeValues?: ProductAttrValue[];
+    image?: string | null;
+    images?: string[];
   } | null;
   onClose: () => void;
 }
@@ -142,6 +144,18 @@ const ProductVariantsModal: React.FC<ProductVariantsModalProps> = ({ product, on
   };
 
   const handleSave = async () => {
+    // Strict requirement: every active variant must have a primary image (Slot 1)
+    const missingImages = variantsRef.current?.getVariantsMissingImage() ?? [];
+    if (missingImages.length > 0) {
+      const names = missingImages.slice(0, 2).map((m) => m.label).join(", ");
+      const more = missingImages.length > 2 ? ` (+${missingImages.length - 2} more)` : "";
+      toast.error(
+        `1st image is required for all active variants. Missing: ${names}${more}`,
+        { id: "variant-missing-image-modal", duration: 5000 },
+      );
+      return;
+    }
+
     const count = variantsRef.current?.allUnpriced() ?? 0;
     if (count > 0) {
       setUnpricedCount(count);
@@ -203,6 +217,7 @@ const ProductVariantsModal: React.FC<ProductVariantsModalProps> = ({ product, on
             }}
             basePrice={product.price ?? null}
             basePurchasePrice={product.purchasePrice ?? null}
+            productImages={[product.image, ...(product.images ?? [])].filter(Boolean) as string[]}
           />
         </div>
 

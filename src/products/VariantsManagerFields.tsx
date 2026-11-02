@@ -10,10 +10,27 @@
 // form's preview table (which can't hit these endpoints yet because the product doesn't
 // exist until it's created).
 
-import React, { forwardRef, useEffect, useImperativeHandle, useState } from "react";
-import { Plus, Trash2, Layers, SlidersHorizontal, Pencil, Check, X } from "lucide-react";
+import React, { forwardRef, useEffect, useImperativeHandle, useState, useRef } from "react";
+import {
+  Plus,
+  Trash2,
+  Layers,
+  SlidersHorizontal,
+  Pencil,
+  Check,
+  X,
+  Image as ImageIcon,
+  Upload,
+  ArrowLeftRight,
+  RefreshCw,
+  AlertTriangle,
+  Eye,
+  CheckCircle,
+  Maximize2,
+} from "lucide-react";
 import toast from "react-hot-toast";
 import api from "../utils/api";
+import { compressImage } from "../utils/compressImage";
 
 // A controlled number input just echoes back whatever string you hand it — typing "5"
 // after a displayed "0" produces "05", not "5", since nothing strips the stale leading
@@ -36,6 +53,11 @@ interface Variant {
   purchasePriceOverride: number | null;
   /** Falls back to the product's own Discount % when null, 0-100. */
   discountOverride: number | null;
+  /** Primary featured photo for this variant (Slot 1) */
+  image?: string | null;
+  /** Secondary angle/detail photo for this variant (Slot 2) */
+  secondaryImage?: string | null;
+  images?: string[];
   isActive: boolean;
 }
 
@@ -104,6 +126,8 @@ interface VariantsManagerFieldsProps {
    * fall back on. */
   basePrice?: number | null;
   basePurchasePrice?: number | null;
+  /** Existing images from the parent product gallery to allow 1-click variant image assignment */
+  productImages?: string[];
 }
 
 /** Imperative handle so a parent's own "Save Changes" button can commit these rows'
@@ -127,6 +151,10 @@ export interface VariantsManagerFieldsHandle {
    * driving the variant combination itself, same exclusion Listproducts.tsx applies
    * for its own embedded picker (see its perVariantCategoryAttrs). */
   getVariantOptionAxisNames: () => string[];
+  /** Returns active variants that are missing a required primary image (Slot 1) */
+  getVariantsMissingImage: () => { id: string; label: string }[];
+  /** Returns true if any active variant has no primary image */
+  hasMissingImages: () => boolean;
 }
 
 /** Renders one Category Filter attribute's control (SELECT/MULTISELECT/BOOLEAN/
@@ -211,6 +239,7 @@ const VariantsManagerFields = forwardRef<VariantsManagerFieldsHandle, VariantsMa
   onPendingEditsChange,
   basePrice = null,
   basePurchasePrice = null,
+  productImages = [],
 }, ref) => {
   const [variants, setVariants] = useState<Variant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -235,6 +264,142 @@ const VariantsManagerFields = forwardRef<VariantsManagerFieldsHandle, VariantsMa
   const [editingOptionsId, setEditingOptionsId] = useState<string | null>(null);
   const [editingOptionsDraft, setEditingOptionsDraft] = useState<Record<string, string>>({});
   const [savingOptions, setSavingOptions] = useState(false);
+
+  // Variant Image Management State (Dual Slots: Primary & Secondary)
+  const [uploadingSlot, setUploadingSlot] = useState<{ variantId: string; slot: "primary" | "secondary" } | null>(null);
+  const [galleryPickerTarget, setGalleryPickerTarget] = useState<{ variantId: string | "ALL"; slot: "primary" | "secondary" } | null>(null);
+  const [previewModalImage, setPreviewModalImage] = useState<{ url: string; title: string } | null>(null);
+  const [applyingToAll, setApplyingToAll] = useState(false);
+
+  const handleImageUpload = async (variantId: string, slot: "primary" | "secondary", file: File) => {
+    setUploadingSlot({ variantId, slot });
+    try {
+      const compressed = await compressImage(file);
+      const formData = new FormData();
+      if (slot === "primary") {
+        formData.append("image", compressed);
+      } else {
+        formData.append("secondaryImage", compressed);
+      }
+
+      const res = await api.post(`/product/${productId}/variants/${variantId}/images`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      if (res.data.variant) {
+        setVariants((prev) => prev.map((v) => (v.id === variantId ? res.data.variant : v)));
+        toast.success(slot === "primary" ? "1st image uploaded" : "2nd image uploaded");
+        onVariantsChanged?.();
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message ?? "Failed to upload variant image");
+    } finally {
+      setUploadingSlot(null);
+    }
+  };
+
+  const handleSetImageUrl = async (variantId: string | "ALL", slot: "primary" | "secondary", url: string | null) => {
+    if (variantId === "ALL") {
+      if (!url) return;
+      await handleGalleryApplyToAll(url, slot);
+      return;
+    }
+    try {
+      const payload = slot === "primary" ? { image: url } : { secondaryImage: url };
+      const res = await api.put(`/product/${productId}/variants/${variantId}`, payload);
+      if (res.data.variant) {
+        setVariants((prev) => prev.map((v) => (v.id === variantId ? res.data.variant : v)));
+        toast.success(slot === "primary" ? "1st image updated" : "2nd image updated");
+        onVariantsChanged?.();
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message ?? "Failed to update variant image");
+    }
+  };
+
+  const handleRemoveImage = async (variantId: string, slot: "primary" | "secondary") => {
+    await handleSetImageUrl(variantId, slot, null);
+  };
+
+  const handleSwapImages = async (variant: Variant) => {
+    try {
+      const res = await api.put(`/product/${productId}/variants/${variant.id}`, {
+        image: variant.secondaryImage || null,
+        secondaryImage: variant.image || null,
+      });
+      if (res.data.variant) {
+        setVariants((prev) => prev.map((v) => (v.id === variant.id ? res.data.variant : v)));
+        toast.success("1st and 2nd images swapped");
+        onVariantsChanged?.();
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message ?? "Failed to swap variant images");
+    }
+  };
+
+  const handleApplyImagesToAll = async (sourceVariantId: string, slot: "primary" | "secondary" | "both" = "both") => {
+    setApplyingToAll(true);
+    try {
+      const res = await api.post(`/product/${productId}/variants/apply-images-all`, {
+        sourceVariantId,
+        slot,
+      });
+      if (res.data.variants) {
+        setVariants(res.data.variants);
+        const label = slot === "primary" ? "1st image" : slot === "secondary" ? "2nd image" : "Photos";
+        toast.success(res.data.message || `${label} applied to all ${res.data.variants.length} variants ✓`);
+        onVariantsChanged?.();
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message ?? "Failed to apply image to all variants");
+    } finally {
+      setApplyingToAll(false);
+    }
+  };
+
+  const handleBulkUploadToAll = async (slot: "primary" | "secondary", file: File) => {
+    setApplyingToAll(true);
+    try {
+      const compressed = await compressImage(file);
+      const formData = new FormData();
+      if (slot === "primary") {
+        formData.append("image", compressed);
+      } else {
+        formData.append("secondaryImage", compressed);
+      }
+      formData.append("slot", slot);
+
+      const res = await api.post(`/product/${productId}/variants/apply-images-all`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      if (res.data.variants) {
+        setVariants(res.data.variants);
+        toast.success(res.data.message || `Photo uploaded and applied to all ${res.data.variants.length} variants ✓`);
+        onVariantsChanged?.();
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message ?? "Failed to upload and apply image to all variants");
+    } finally {
+      setApplyingToAll(false);
+    }
+  };
+
+  const handleGalleryApplyToAll = async (url: string, slot: "primary" | "secondary") => {
+    setApplyingToAll(true);
+    try {
+      const payload = slot === "primary" ? { image: url, slot: "primary" } : { secondaryImage: url, slot: "secondary" };
+      const res = await api.post(`/product/${productId}/variants/apply-images-all`, payload);
+      if (res.data.variants) {
+        setVariants(res.data.variants);
+        toast.success(`Gallery photo applied to all ${res.data.variants.length} variants ✓`);
+        onVariantsChanged?.();
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message ?? "Failed to apply gallery image to variants");
+    } finally {
+      setApplyingToAll(false);
+      setGalleryPickerTarget(null);
+    }
+  };
 
   const startEditOptions = (v: Variant) => {
     setEditingOptionsId(v.id);
@@ -399,11 +564,25 @@ const VariantsManagerFields = forwardRef<VariantsManagerFieldsHandle, VariantsMa
       getVariantOptionAxisNames: () => [
         ...new Set(variants.flatMap((v) => Object.keys(v.options ?? {}).map((k) => k.trim().toLowerCase()))),
       ],
+      getVariantsMissingImage: () =>
+        variants
+          .filter((v) => v.isActive && (!v.image || !v.image.trim()))
+          .map((v) => ({ id: v.id, label: formatOptions(v.options) || "Variant" })),
+      hasMissingImages: () =>
+        variants.some((v) => v.isActive && (!v.image || !v.image.trim())),
     }),
     [pendingEdits, variantsMissingPrice, activeVariants, variants],
   );
 
   const toggleActive = async (variant: Variant) => {
+    // Strict safeguard: cannot activate an option without a 1st image
+    if (!variant.isActive && (!variant.image || !variant.image.trim())) {
+      toast.error(
+        `Please upload 1st image before activating ${formatOptions(variant.options) || "this variant"}.`,
+        { id: "variant-image-required-toggle" }
+      );
+      return;
+    }
     try {
       const res = await api.put(`/product/${productId}/variants/${variant.id}`, { isActive: !variant.isActive });
       setVariants((prev) => prev.map((v) => (v.id === variant.id ? res.data.variant : v)));
@@ -562,7 +741,7 @@ const VariantsManagerFields = forwardRef<VariantsManagerFieldsHandle, VariantsMa
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-4">
           {variants.map((v) => {
             const edit = pendingEdits[v.id];
             const hasEdit = !!edit;
@@ -624,6 +803,165 @@ const VariantsManagerFields = forwardRef<VariantsManagerFieldsHandle, VariantsMa
             const margin = hasMargin ? sellVal - purchaseVal : 0;
             const marginPct = hasMargin ? (margin / purchaseVal) * 100 : 0;
             const isEditingOptions = editingOptionsId === v.id;
+
+            const renderImageSlot = (
+              variant: Variant,
+              slot: "primary" | "secondary",
+              title: string,
+              subtitle: string,
+            ) => {
+              const currentUrl = slot === "primary" ? variant.image : variant.secondaryImage;
+              const isSlotUploading = uploadingSlot?.variantId === variant.id && uploadingSlot?.slot === slot;
+              const isRequiredSlot = slot === "primary";
+              const isMissingRequired = isRequiredSlot && !currentUrl && variant.isActive;
+              const badgeNumber = slot === "primary" ? "1" : "2";
+
+              if (currentUrl) {
+                return (
+                  <div className="relative group/slot rounded-2xl border-2 border-slate-200 bg-white p-3 shadow-2xs hover:shadow-xs hover:border-indigo-300 transition-all space-y-2.5 flex flex-col justify-between">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`flex h-5 w-5 items-center justify-center rounded-md text-[11px] font-bold text-white shadow-2xs ${
+                            slot === "primary" ? "bg-emerald-600" : "bg-indigo-600"
+                          }`}
+                        >
+                          {badgeNumber}
+                        </span>
+                        <span className="text-xs font-bold text-slate-800">{title}</span>
+                      </div>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <CheckCircle className="h-3 w-3 text-emerald-600" />
+                        Ready
+                      </span>
+                    </div>
+
+                    {/* Square Photo Preview Box */}
+                    <div
+                      className="relative aspect-4/3 sm:aspect-square w-full rounded-xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center group/thumb cursor-pointer"
+                      onClick={() =>
+                        setPreviewModalImage({
+                          url: currentUrl,
+                          title: `${formatOptions(variant.options)} — ${title}`,
+                        })
+                      }
+                    >
+                      <img
+                        src={currentUrl}
+                        alt={`${formatOptions(variant.options)} - ${slot}`}
+                        className="w-full h-full object-contain p-2 transition-transform duration-300 group-hover/thumb:scale-105"
+                      />
+                      <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-slate-900/80 text-white text-[10px] font-bold backdrop-blur-sm pointer-events-none shadow-xs">
+                        #{badgeNumber}
+                      </div>
+                      <div className="absolute inset-0 bg-black/40 text-white flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-all duration-200">
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/25 backdrop-blur-md text-white text-xs font-semibold shadow-lg">
+                          <Maximize2 className="h-3.5 w-3.5" />
+                          <span>Full Preview</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Actions footer */}
+                    <div className="pt-0.5 flex items-center justify-between gap-1.5">
+                      <label className="cursor-pointer inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition shadow-2xs">
+                        <Upload className="h-3 w-3 text-slate-500" />
+                        Replace
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          disabled={isSlotUploading || applyingToAll}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleImageUpload(variant.id, slot, file);
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        disabled={isSlotUploading || applyingToAll}
+                        onClick={() => handleRemoveImage(variant.id, slot)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold border border-rose-200/60 transition shadow-2xs ml-auto cursor-pointer"
+                        title="Remove image"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+
+                    {isSlotUploading && (
+                      <div className="absolute inset-0 rounded-2xl bg-white/90 backdrop-blur-xs flex items-center justify-center gap-1.5 text-xs font-semibold text-indigo-600 z-10">
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        Uploading…
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              return (
+                <div className="relative rounded-xl border border-dashed border-slate-200 bg-slate-50/40 hover:bg-slate-50 hover:border-indigo-300 transition-all p-3 space-y-2 flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-md text-[11px] font-bold bg-indigo-100 text-indigo-700">
+                        {badgeNumber}
+                      </span>
+                      <span className="text-xs font-semibold text-slate-700">{title}</span>
+                    </div>
+                    {isRequiredSlot ? (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border text-slate-600 bg-slate-100 border-slate-200">
+                        Required *
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Optional</span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <label className="flex-1 cursor-pointer border-2 border-dashed border-slate-200 hover:border-indigo-400 bg-white hover:bg-indigo-50/20 rounded-xl py-2.5 px-3 transition-all duration-200 flex items-center justify-center gap-2 group">
+                      <div className="p-1 rounded-lg bg-indigo-50 text-indigo-600 group-hover:scale-105 group-hover:bg-indigo-600 group-hover:text-white transition-all">
+                        <Upload className="h-3.5 w-3.5" />
+                      </div>
+                      <span className="text-xs font-bold text-slate-700 group-hover:text-indigo-700">
+                        {slot === "primary" ? "Upload 1st Image *" : "Upload 2nd Image"}
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={isSlotUploading || applyingToAll}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleImageUpload(variant.id, slot, file);
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                    {productImages && productImages.length > 0 && (
+                      <button
+                        type="button"
+                        disabled={isSlotUploading || applyingToAll}
+                        onClick={() => setGalleryPickerTarget({ variantId: variant.id, slot })}
+                        className="inline-flex items-center justify-center gap-1 py-2.5 px-3 rounded-xl bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/30 text-xs font-semibold text-slate-700 hover:text-indigo-600 transition shadow-2xs cursor-pointer"
+                        title="Pick an existing photo from the product's gallery"
+                      >
+                        <ImageIcon className="h-3.5 w-3.5 text-slate-500" />
+                        <span>Gallery</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {isSlotUploading && (
+                    <div className="absolute inset-0 rounded-xl bg-white/90 backdrop-blur-xs flex items-center justify-center gap-1.5 text-xs font-semibold text-indigo-600 z-10">
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      Uploading…
+                    </div>
+                  )}
+                </div>
+              );
+            };
+
             return (
               <div key={v.id} className="rounded-xl border border-slate-200 bg-white p-5 space-y-4">
                 {isEditingOptions ? (
@@ -717,6 +1055,44 @@ const VariantsManagerFields = forwardRef<VariantsManagerFieldsHandle, VariantsMa
                 {hasEdit && (
                   <span className="block text-[10px] font-semibold text-amber-600">Unsaved — click Save Changes below</span>
                 )}
+
+                {/* DUAL VARIANT IMAGES (1st image & 2nd image) */}
+                <div className="pt-3 border-t border-slate-100 space-y-2">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <ImageIcon className="h-3.5 w-3.5 text-indigo-600" />
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                        Variant Images <span className="normal-case font-normal text-slate-400">(1st image Required *, 2nd image Optional)</span>
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {v.image && v.secondaryImage && (
+                        <button
+                          type="button"
+                          onClick={() => handleSwapImages(v)}
+                          className="flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 transition cursor-pointer"
+                          title="Swap 1st image and 2nd image"
+                        >
+                          <ArrowLeftRight className="h-3 w-3" />
+                          Swap order
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {v.isActive && !v.image && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-800 text-xs">
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                      <span>1st image is required before saving or selling this variant.</span>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {renderImageSlot(v, "primary", "1st image *", "Shown when this option is selected")}
+                    {renderImageSlot(v, "secondary", "2nd image", "Hover cross-fade & gallery thumbnail")}
+                  </div>
+                </div>
+
                 {categoryFilters && categoryFilters.attrs.length > 0 && (
                   <div className="pt-4 mt-4 border-t border-slate-100 space-y-3">
                     {categoryFilters.attrs.map((attr) => (
@@ -735,6 +1111,118 @@ const VariantsManagerFields = forwardRef<VariantsManagerFieldsHandle, VariantsMa
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Gallery Picker Modal */}
+      {galleryPickerTarget && (
+        <div className="fixed inset-0 z-70 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs px-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <div>
+                <h3 className="font-bold text-slate-900 text-sm">Choose from Product Gallery</h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {galleryPickerTarget.variantId === "ALL"
+                    ? `Apply chosen image to ALL ${variants.length} variants (${galleryPickerTarget.slot === "primary" ? "1st image" : "2nd image"})`
+                    : `Select an image for ${galleryPickerTarget.slot === "primary" ? "1st image" : "2nd image"}`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setGalleryPickerTarget(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-5 max-h-[60vh] overflow-y-auto">
+              {productImages && productImages.length > 0 ? (
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                  {productImages.map((imgUrl, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      disabled={applyingToAll}
+                      onClick={() => {
+                        handleSetImageUrl(galleryPickerTarget.variantId, galleryPickerTarget.slot, imgUrl);
+                        if (galleryPickerTarget.variantId !== "ALL") setGalleryPickerTarget(null);
+                      }}
+                      className="group relative aspect-square rounded-xl overflow-hidden border-2 border-slate-100 hover:border-indigo-600 focus:border-indigo-600 transition shadow-2xs cursor-pointer"
+                    >
+                      <img src={imgUrl} alt={`Product ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition" />
+                      <div className="absolute inset-0 bg-indigo-600/0 group-hover:bg-indigo-600/20 transition flex items-center justify-center">
+                        <span className="opacity-0 group-hover:opacity-100 bg-white/95 text-indigo-700 text-[10px] font-bold px-2 py-1 rounded shadow transition">
+                          Select
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400 text-center py-8">No product gallery images found.</p>
+              )}
+            </div>
+
+            <div className="flex justify-end px-5 py-3 border-t border-slate-100 bg-slate-50/50">
+              <button
+                type="button"
+                onClick={() => setGalleryPickerTarget(null)}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-white transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox / High-Res Image Preview Modal */}
+      {previewModalImage && (
+        <div
+          className="fixed inset-0 z-80 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={() => setPreviewModalImage(null)}
+        >
+          <div
+            className="relative max-w-xl w-full bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 bg-slate-50">
+              <div className="min-w-0 flex-1 pr-3">
+                <h4 className="text-sm font-bold text-slate-900 truncate flex items-center gap-2">
+                  <ImageIcon className="h-4 w-4 text-indigo-600 shrink-0" />
+                  {previewModalImage.title}
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewModalImage(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition cursor-pointer"
+                title="Close preview (Esc)"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 bg-slate-950 flex items-center justify-center min-h-[260px] max-h-[65vh] overflow-hidden">
+              <img
+                src={previewModalImage.url}
+                alt={previewModalImage.title}
+                className="max-h-[60vh] w-auto max-w-full object-contain rounded-lg shadow-lg"
+              />
+            </div>
+
+            <div className="px-5 py-3 border-t border-slate-100 bg-white flex items-center justify-between text-xs text-slate-500">
+              <span>Press <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border text-[10px] font-mono">Esc</kbd> or click outside to close</span>
+              <button
+                type="button"
+                onClick={() => setPreviewModalImage(null)}
+                className="px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 font-semibold text-slate-700 transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

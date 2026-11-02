@@ -164,7 +164,7 @@ export const WishlistProvider = ({
       value={{
         wishlistItems: items,
         wishlistCount: items.length,
-        loading: isFetching && !hasFetched,
+        loading: (!hasFetched || isFetching) && items.length === 0,
         fetchWishlist,
         toggleWishlist,
         isProductInWishlist,

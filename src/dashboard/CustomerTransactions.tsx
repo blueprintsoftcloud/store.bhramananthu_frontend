@@ -124,7 +124,7 @@ const PAYMENT_METHOD_CFG: Record<string, { cls: string; label: string }> = {
   ONLINE: { cls: "bg-blue-100 text-blue-700 border-blue-200", label: "Online" },
   QR: { cls: "bg-purple-100 text-purple-700 border-purple-200", label: "Pay with QR" },
   POD: { cls: "bg-gray-100 text-gray-700 border-gray-200", label: "COD" },
-  CASH: { cls: "bg-teal-100 text-teal-700 border-teal-200", label: "Cash" },
+  CASH: { cls: "bg-teal-100 text-teal-700 border-teal-200", label: "Prepaid" },
 };
 
 const PaymentMethodBadge = ({ method }: { method: string }) => {
@@ -430,7 +430,7 @@ export default function CustomerTransactions() {
               <option value="">All Payment Methods</option>
               <option value="ONLINE">Online (Razorpay)</option>
               <option value="POD">Cash on Delivery (COD)</option>
-              <option value="CASH">Cash (Admin-placed)</option>
+              <option value="CASH">Prepaid (Admin-placed)</option>
             </select>
 
             {hasFilters && (

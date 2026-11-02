@@ -21,7 +21,7 @@ export default function AnalyticsScripts() {
       isFirstRender.current = false;
       return;
     }
-    if (seo.metaPixelId) {
+    if (seo.metaPixelId || (typeof window !== "undefined" && typeof window.fbq === "function")) {
       trackMetaPageView();
     }
   }, [location.pathname, location.search, seo.metaPixelId]);

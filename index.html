@@ -1,10 +1,15 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-text-size="xlarge">
   <head>
     <meta charset="UTF-8" />
     <script>
       (function() {
         try {
+          var size = localStorage.getItem("bhramananthu_text_size_v2") || localStorage.getItem("bhramananthu_text_size") || "xlarge";
+          if (size === "large" && !localStorage.getItem("bhramananthu_text_size_v2")) {
+            size = "xlarge";
+          }
+          document.documentElement.setAttribute("data-text-size", size);
           var cache = localStorage.getItem("crm_branding_cache");
           if (cache) {
             var data = JSON.parse(cache);
@@ -32,13 +37,35 @@
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
-    <meta name="description" content="Crafted by leading air freshener manufacturers, Amor brings high-quality, refreshing scents to your space. Order yours today!" />
+    <meta name="description" content="Bhramananthu Oil - 100% Ayurvedic solution for ear balance, vertigo, and dizziness relief by Panakkal Ayurveda Pharmacy." />
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Amore Webstore" />
+    <meta property="og:site_name" content="Bhramananthu Store" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400;1,700&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;0,7..72,700;0,7..72,800;1,7..72,400;1,7..72,700&family=Noto+Sans+Malayalam:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="/src/style.css" rel="stylesheet" />
-    <title>Amore Webstore</title>
+    <!-- Meta Pixel Code -->  
+    <script>  
+      !function(f,b,e,v,n,t,s)  
+      {if(f.fbq)return;n=f.fbq=function(){n.callMethod?  
+      n.callMethod.apply(n,arguments):n.queue.push(arguments)};  
+      if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';  
+      n.queue=[];t=b.createElement(e);t.async=!0;  
+      t.src=v;s=b.getElementsByTagName(e)[0];  
+      s.parentNode.insertBefore(t,s)}(window, document,'script',  
+      'https://connect.facebook.net/en_US/fbevents.js');  
+      fbq('init', '1766533370600791');  
+      fbq('track', 'PageView');  
+    </script>  
+    <!-- End Meta Pixel Code -->  
+
+    <title>Bhramananthu Store | Panakkal Ayurveda Pharmacy</title>
   </head>
   <body>
+    <!-- Meta Pixel noscript fallback -->
+    <noscript>
+      <img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=1766533370600791&ev=PageView&noscript=1" />
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

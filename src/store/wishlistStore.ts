@@ -38,7 +38,7 @@ export const useWishlistStore = create<WishlistState>()(
       items: [],
       hasFetched: false,
 
-      setItems: (items) => set({ items }),
+      setItems: (items) => set({ items, hasFetched: true }),
       setHasFetched: (hasFetched) => set({ hasFetched }),
       addItem: (product) =>
         set((state) => ({
@@ -54,6 +54,7 @@ export const useWishlistStore = create<WishlistState>()(
     }),
     {
       name: "wishlist-storage",
+      partialize: (state) => ({ items: state.items, hasFetched: state.hasFetched }),
     }
   )
 );
